@@ -25,6 +25,9 @@ Example:
     1 2030-06-30    102500.0
 """
 
+# SPDX-License-Identifier: MIT
+
+
 from dataclasses import dataclass
 from typing import Optional
 import pandas as pd
