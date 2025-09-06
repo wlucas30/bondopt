@@ -5,10 +5,6 @@ Contains the Bond class and related functions for cashflow projection and basic 
 
 Classes:
     Bond - Represents a fixed-income instrument.
-
-Functions:
-    Bond.cashflows(valuation_date=None) -> pd.DataFrame
-        Generates a schedule of future cashflows from the valuation date until maturity.
         
 Notes:
     - Currently supports fixed and zero-coupon bonds.
@@ -27,10 +23,10 @@ Example:
 
 # SPDX-License-Identifier: MIT
 
-
 from dataclasses import dataclass
 from typing import Optional
 import pandas as pd
+import numpy as np
 import dateutil.relativedelta as rd
 
 @dataclass
@@ -63,6 +59,8 @@ class Bond:
     Methods:
         cashflows(valuation_date=None) -> pd.DataFrame
             Generates a schedule of future cashflows from the valuation date until maturity.
+        expected_value(as_of=None, yield_curve=None) -> float
+            Calculates the expected future value of a bond at a given date, optionally applying discounting using a yield curve.
         
     Notes:
         - Currently supports fixed and zero-coupon bonds.
@@ -117,7 +115,16 @@ class Bond:
             raise ValueError(f"maturity_date {self.maturity_date.date()} is in the past")
 
     def cashflows(self, valuation_date: Optional[pd.Timestamp] = None) -> pd.DataFrame:
-        """Generates bond cashflow schedule."""
+        """
+        Generates bond cashflow schedule.
+        
+        Args:
+            valuation_date (pd.Timestamp, optional): The date from which the cashflow schedule should
+                begin. Defaults to today if None.
+        
+        Returns:
+            pd.Dataframe: A schedule of future cashflows from the valuation date until maturity.
+        """
         if valuation_date is None:
             valuation_date = pd.Timestamp.today().normalize() # sets valuation_date to 00:00 on the current date
 
@@ -133,7 +140,7 @@ class Bond:
                     amount = coupon + (self.notional * (working_date == self.maturity_date)) # adds notional value if last payment
 
                     # store the payment
-                    cashflow_dates.append(working_date)
+                    cashflow_dates.append(working_date.normalize())
                     cashflow_amounts.append(amount)
 
                     # push the working date back by the previously calculated time between each payment
@@ -144,3 +151,52 @@ class Bond:
             case "zero":
                 # the notional value is paid at the maturity date
                 return pd.DataFrame({"Date": [self.maturity_date], "Cashflow": [self.notional]})
+    
+    def expected_value(self, as_of: Optional[pd.Timestamp] = None, yield_curve: Optional[pd.Series] = None) -> float:
+        """
+        Calculates the expected future value of a bond at a given date, optionally applying discounting using a yield curve.
+
+        Args:
+            as_of (pd.Timestamp, optional): Target date for valuation. Defaults to today.
+            yield_curve: (pd.Series, optional): Series providing annualised zero rates for given dates.
+                Should be indexed by pd.Timestamp. If None, no discounting is applied.
+        
+        Returns:
+            float: Expected market (present) value at the target date.
+        """
+
+        # Data validation
+        if as_of is None:
+            as_of = pd.Timestamp.today().normalize()
+        else:
+            as_of = pd.Timestamp(as_of).normalize()
+
+        # Generate all future cashflows from today
+        cashflows_dataframe = self.cashflows()
+
+        # Initialise future value at 0 to be incremented later on
+        future_value = 0.0
+
+        # Iterate through each cashflow payment
+        for _, row in cashflows_dataframe.iterrows():
+            cashflow_date, cashflow_amount = row["Date"].normalize(), row["Cashflow"]
+
+            # Skip if the date is before the target date (cash already received)
+            if cashflow_date < as_of:
+                continue
+                
+            # Discounting and reinvesting is only applied when yield_curve != None
+            if yield_curve is not None:
+                # Linear interpolation to find rate between given rates in the yield curve
+                rate = float(np.interp(cashflow_date.value, yield_curve.index.view(np.int64), yield_curve.values))
+
+                # Calculate time in years to the cashflow date
+                delta_years = (cashflow_date - as_of).days / 365.0
+
+                # Discount cashflow to as_of
+                cashflow_amount /= (1 + rate) ** delta_years
+            
+            # Add cashflow to total
+            future_value += cashflow_amount
+        
+        return future_value
