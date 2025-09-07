@@ -28,6 +28,7 @@ from typing import Optional
 import pandas as pd
 import numpy as np
 import dateutil.relativedelta as rd
+from scipy.optimize import brentq
 
 @dataclass
 class Bond:
@@ -156,6 +157,34 @@ class Bond:
                 # the notional value is paid at the maturity date
                 return pd.DataFrame({"Date": [self.maturity_date], "Cashflow": [self.notional]})
     
+    def _solve_z_spread(self, as_of: pd.Timestamp, yield_curve: pd.Series, spread_bounds: tuple = (-1.0, 1.0), tol: float = 2e-10, max_iter: int = 200):
+        """
+        (Protected method)
+        Solves for the constant zero-volatility spread that makes PV(as_of; curve + spread) == market_value.
+
+        Args:
+            - yield_curve: pd.Series indexed by dates with annualised zero rates
+            - spread_bounds: (low, high) bracket for search in decimals (e.g. -0.5 -> -50%, 1.0 -> 100%)
+        Returns:
+            spread (float) in decimals (e.g. 0.007 = 0.7%)
+        """
+
+        # Define objective: pv(spread) - market_value
+        def objective(s):
+            pv = self.expected_value(as_of=as_of, yield_curve=yield_curve+s)
+            return pv - float(self.market_value)
+        
+        low, high = spread_bounds
+
+        # Attempts to find the root of the objective (Solve for z-spread)
+        try:
+            spread = brentq(objective, low, high, xtol=tol, maxiter=max_iter)
+        except:
+            print("Critical error: Zero-volatility spread could not be calculated! Proceeding with no spread...")
+            spread = 0
+
+        return float(spread)
+    
     def expected_value(self, as_of: Optional[pd.Timestamp] = None, yield_curve: Optional[pd.Series] = None) -> float:
         """
         Calculates the expected future value of a bond at a given date, optionally applying discounting using a yield curve.
@@ -192,7 +221,9 @@ class Bond:
             # Discounting and reinvesting is only applied when yield_curve != None
             if yield_curve is not None:
                 # Linear interpolation to find rate between given rates in the yield curve
-                rate = float(np.interp(cashflow_date.value, yield_curve.index.view(np.int64), yield_curve.values))
+                curve_times = (yield_curve.index - as_of).days / 365.0
+                target_time = (cashflow_date - as_of).days / 365.0
+                rate = float(np.interp(target_time, curve_times, yield_curve.values))
 
                 # Calculate time in years to the cashflow date
                 delta_years = (cashflow_date - as_of).days / 365.0
@@ -204,3 +235,46 @@ class Bond:
             future_value += cashflow_amount
         
         return future_value
+    
+    def get_present_values_daily(self, from_date: Optional[pd.Timestamp] = None, yield_curve: Optional[pd.Series] = None) -> pd.DataFrame:
+        """
+        Calculates the expected future present value of a bond monthl from a given date, optionally applying discounting using a yield curve.
+        This method also calculates z-spread to ensure that the present value is equal to market value at t=0.
+
+        Args:
+            from_date (pd.Timestamp, optional): Target date for valuation. Defaults to today.
+            yield_curve: (pd.Series, optional): Series providing annualised zero rates for given dates.
+                Should be indexed by pd.Timestamp. If None, no discounting is applied.
+        
+        Returns:
+            pd.DataFrame: Expected market (present) value at regular monthly intervals.
+        """
+        
+        # Data validation
+        if from_date is None:
+            from_date = pd.Timestamp.today().normalize()
+        else:
+            from_date = pd.Timestamp(from_date).normalize()
+
+        # Generate z-spread if needed
+        if yield_curve is not None:
+            zspread = self._solve_z_spread(as_of=from_date, yield_curve=yield_curve)
+            adjusted_yield_curve = yield_curve + zspread
+        
+        # Initialise new array to hold dates for checking present value
+        dates = [from_date]
+
+        # Iterate until the working date is past the maturity date
+        working_date = from_date
+        while working_date < self.maturity_date:
+            working_date += rd.relativedelta(days=1)
+            working_date = pd.Timestamp(working_date).normalize()
+            dates.append(working_date)
+        
+        # Generate present value at every date
+        present_values = []
+        for date in dates:
+            present_value = self.expected_value(as_of=date, yield_curve=adjusted_yield_curve)
+            present_values.append(round(present_value,2))
+        
+        return pd.DataFrame({"Date": dates, "Value": present_values})
