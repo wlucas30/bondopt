@@ -171,7 +171,7 @@ class Bond:
 
         # Define objective: pv(spread) - market_value
         def objective(s):
-            pv = self.expected_value(as_of=as_of, yield_curve=yield_curve+s)
+            pv = self.expected_value(as_of=as_of, yield_curve=yield_curve, zspread=s)
             return pv - float(self.market_value)
         
         low, high = spread_bounds
@@ -185,7 +185,7 @@ class Bond:
 
         return float(spread)
     
-    def expected_value(self, as_of: Optional[pd.Timestamp] = None, yield_curve: Optional[pd.Series] = None) -> float:
+    def expected_value(self, as_of: Optional[pd.Timestamp] = None, yield_curve: Optional[pd.Series] = None, zspread=0) -> float:
         """
         Calculates the expected future value of a bond at a given date, optionally applying discounting using a yield curve.
 
@@ -218,17 +218,21 @@ class Bond:
             if cashflow_date < as_of:
                 continue
                 
-            # Discounting and reinvesting is only applied when yield_curve != None
+            # Discounting is only applied when yield_curve != None
             if yield_curve is not None:
                 # Linear interpolation to find rate between given rates in the yield curve
                 curve_times = (yield_curve.index - as_of).days / 365.0
                 target_time = (cashflow_date - as_of).days / 365.0
-                rate = float(np.interp(target_time, curve_times, yield_curve.values))
+                rate = float(np.interp(target_time, curve_times, yield_curve.values)) + zspread
 
                 # Calculate time in years to the cashflow date
                 delta_years = (cashflow_date - as_of).days / 365.0
 
                 # Discount cashflow to as_of
+                # Debug:
+                if as_of == pd.Timestamp("2025-10-07").normalize():
+                    print(delta_years)
+                    print(rate)
                 cashflow_amount /= (1 + rate) ** delta_years
             
             # Add cashflow to total
@@ -259,7 +263,8 @@ class Bond:
         # Generate z-spread if needed
         if yield_curve is not None:
             zspread = self._solve_z_spread(as_of=from_date, yield_curve=yield_curve)
-            adjusted_yield_curve = yield_curve + zspread
+
+            print(f"Spread calculated! {zspread*100}%")
         
         # Initialise new array to hold dates for checking present value
         dates = [from_date]
@@ -274,7 +279,7 @@ class Bond:
         # Generate present value at every date
         present_values = []
         for date in dates:
-            present_value = self.expected_value(as_of=date, yield_curve=adjusted_yield_curve)
+            present_value = self.expected_value(as_of=date, yield_curve=yield_curve, zspread=zspread)
             present_values.append(round(present_value,2))
         
         return pd.DataFrame({"Date": dates, "Value": present_values})

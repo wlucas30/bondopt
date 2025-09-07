@@ -15,10 +15,13 @@ bond = Bond(
 )
 
 # Yield curve: 1y=3.1%, 2y=3.2%, …, 10y=4.0%
-curve_dates = [as_of + pd.DateOffset(years=i) for i in range(1, 11)]
-curve_rates = [0.031 + 0.001 * (i - 1) for i in range(1, 11)]  # 3.1%, 3.2%, ..., 4.0%
+curve_dates = [as_of + pd.DateOffset(years=i) for i in range(0, 11)]
+curve_rates = [0.03 + 0.001 * (i - 1) for i in range(1, 12)]  # 3.0%, 3.1%, 3.2%, ..., 3.9%
 yc = pd.Series(curve_rates, index=curve_dates)
+
+print(yc)
 
 # Run valuation
 pv = bond.get_present_values_daily(from_date=as_of, yield_curve=yc)
 print(pv)
+print(pv.iloc[30])

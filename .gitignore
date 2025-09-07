@@ -5,3 +5,4 @@ venv/
 project-log.md
 *.egg-info/
 dist/
+test.py
