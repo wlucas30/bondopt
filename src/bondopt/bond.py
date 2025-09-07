@@ -113,6 +113,8 @@ class Bond:
             raise ValueError("Expected non-negative value for notional")
         if self.maturity_date < pd.Timestamp.today().normalize():
             raise ValueError(f"maturity_date {self.maturity_date.date()} is in the past")
+        else:
+            self.maturity_date = pd.Timestamp(self.maturity_date).normalize()
 
     def cashflows(self, valuation_date: Optional[pd.Timestamp] = None) -> pd.DataFrame:
         """
@@ -127,6 +129,8 @@ class Bond:
         """
         if valuation_date is None:
             valuation_date = pd.Timestamp.today().normalize() # sets valuation_date to 00:00 on the current date
+        else:
+            valuation_date = pd.Timestamp(valuation_date).normalize()
 
         match self.asset_type:
             case "fixed":
@@ -172,7 +176,7 @@ class Bond:
             as_of = pd.Timestamp(as_of).normalize()
 
         # Generate all future cashflows from today
-        cashflows_dataframe = self.cashflows()
+        cashflows_dataframe = self.cashflows(as_of)
 
         # Initialise future value at 0 to be incremented later on
         future_value = 0.0
