@@ -180,7 +180,7 @@ class Bond:
         try:
             spread = brentq(objective, low, high, xtol=tol, maxiter=max_iter)
         except:
-            print("Critical error: Zero-volatility spread could not be calculated! Proceeding with no spread...")
+            print('\033[31mCritical error: Zero-volatility spread could not be calculated! Proceeding with no spread...\033[0m')
             spread = 0
 
         return float(spread)
