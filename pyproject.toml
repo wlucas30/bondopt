@@ -17,6 +17,7 @@ dependencies = [
     "python-dateutil",
     "matplotlib",
     "numpy",
+    "scipy",
 ]
 
 [project.optional-dependencies]

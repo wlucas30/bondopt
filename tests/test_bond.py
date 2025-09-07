@@ -91,7 +91,7 @@ def test_fixed_coupon_no_yield_curve():
     as_of = pd.Timestamp("2025-01-01")
     ev = b.expected_value(as_of=as_of, yield_curve=None)
     # Expected cashflows: two coupons left + notional
-    cf_df = b.cashflows()
+    cf_df = b.cashflows(as_of)
     expected_sum = cf_df[cf_df["Date"] >= as_of]["Cashflow"].sum()
     assert ev == expected_sum
 
@@ -137,3 +137,40 @@ def test_fixed_coupon_with_yield_curve():
     expected_first = first_cf["Cashflow"] / (1 + 0.05) ** t
 
     assert ev > expected_first  # total value includes remaining cashflows
+
+def test_get_present_values_daily_zero_coupon():
+    # Simple zero-coupon bond
+    maturity = pd.Timestamp.today().normalize() + pd.Timedelta(days=10)
+    bond = Bond(
+        asset_type="zero",
+        coupon_rate=None,
+        coupon_freq=None,
+        maturity_date=maturity,
+        market_value=990,
+        notional=1000,
+    )
+
+    # Flat yield curve at 5%
+    dates = pd.date_range(start=pd.Timestamp.today().normalize(),
+                          periods=11, freq="D")
+    yield_curve = pd.Series(0.05, index=[dates[-1]])  # single point
+
+    df = bond.get_present_values_daily(from_date=dates[0], yield_curve=yield_curve)
+
+    # 1. DataFrame structure
+    assert list(df.columns) == ["Date", "Value"]
+
+    # 2. Dates run daily until maturity
+    assert df["Date"].iloc[0] == dates[0]
+    assert df["Date"].iloc[-1] == maturity
+    assert len(df) == (maturity - dates[0]).days + 1
+
+    # 3. Values should all be non-negative
+    assert (df["Value"] >= 0).all()
+
+    # 4. Present value on the first day should match market_value (after z-spread)
+    assert pytest.approx(df["Value"].iloc[0], rel=1e-2) == bond.market_value
+
+    # 5. Present value should rise over time (converging to notional)
+    assert df["Value"].is_monotonic_increasing
+    assert df["Value"].iloc[-1] == pytest.approx(bond.notional, rel=1e-2)

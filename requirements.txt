@@ -1,3 +1,4 @@
+-e git+https://github.com/wlucas30/bondopt.git@2292e84811b77ed2cbaf739e6c760fcdcd0936e7#egg=bondopt
 contourpy==1.3.3
 cycler==0.12.1
 fonttools==4.59.2
@@ -14,5 +15,6 @@ pyparsing==3.2.3
 pytest==8.4.2
 python-dateutil==2.9.0.post0
 pytz==2025.2
+scipy==1.16.1
 six==1.17.0
 tzdata==2025.2
