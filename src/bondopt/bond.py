@@ -29,6 +29,7 @@ import pandas as pd
 import numpy as np
 import dateutil.relativedelta as rd
 from scipy.optimize import brentq
+from copy import deepcopy
 
 @dataclass
 class Bond:
@@ -122,6 +123,8 @@ class Bond:
             raise ValueError("Expected non-negative value for notional")
         else:
             self.maturity_date = pd.Timestamp(self.maturity_date).normalize()
+        if self.issue_date > self.maturity_date:
+            raise ValueError("Issue date must be before maturity date")
 
     def cashflows(self, valuation_date: Optional[pd.Timestamp] = None) -> pd.DataFrame:
         """
@@ -169,7 +172,8 @@ class Bond:
         Solves for the constant zero-volatility spread that makes PV(as_of; curve + spread) == market_value.
 
         Args:
-            - yield_curve: pd.Series indexed by dates with annualised zero rates
+            - yield_curve: pd.Series indexed by dates with annualised zero rates. This indicates the yield for a
+                zero-coupon bond issued on as_of and expiring at the date provided in the index
             - spread_bounds: (low, high) bracket for search in decimals (e.g. -0.5 -> -50%, 1.0 -> 100%)
         Returns:
             spread (float) in decimals (e.g. 0.007 = 0.7%)
@@ -186,8 +190,7 @@ class Bond:
         try:
             spread = brentq(objective, low, high, xtol=tol, maxiter=max_iter)
         except:
-            print('\033[31mCritical error: Zero-volatility spread could not be calculated! Proceeding with no spread...\033[0m')
-            spread = 0
+            raise Exception('\033[31mCritical error: Zero-volatility spread could not be calculated!\033[0m')
 
         return float(spread)
     
@@ -229,19 +232,13 @@ class Bond:
                 # Linear interpolation to find rate between given rates in the yield curve
                 curve_times = (yield_curve.index - as_of).days / 365.0
                 target_time = (cashflow_date - as_of).days / 365.0
-                spot_long = float(np.interp(target_time, curve_times, yield_curve.values))
-                spot_short = float(np.interp(0, curve_times, yield_curve.values))
+                spot_rate = float(np.interp(target_time, curve_times, yield_curve.values)) # spot rate at cashflow date
 
                 # Calculate time in years to the cashflow date
                 delta_years = (cashflow_date - as_of).days / 365.0
 
-                # Calculate forward rate
-                n_short = (as_of - self.issue_date).days / 365.0
-                n_long = target_time
-                rate = self._forward_rate(spot_short, spot_long, n_short, n_long)
-
                 # Discount cashflow to as_of
-                cashflow_amount /= (1 + rate + zspread) ** delta_years
+                cashflow_amount /= (1 + spot_rate + zspread) ** delta_years
             
             # Add cashflow to total
             future_value += cashflow_amount
@@ -276,46 +273,82 @@ class Bond:
         fwd = ratio ** (1 / (n_long - n_short)) - 1
         return fwd
     
-    def get_present_values_daily(self, from_date: Optional[pd.Timestamp] = None, yield_curve: Optional[pd.Series] = None) -> pd.DataFrame:
+    def get_present_values_monthly(self, yield_curve: Optional[pd.Series] = None, yield_curve_dict: Optional[dict] = None) -> pd.DataFrame:
         """
-        Calculates the expected future present value of a bond monthl from a given date, optionally applying discounting using a yield curve.
+        Calculates the expected future present value of a bond daily from a given date, optionally applying discounting using a yield curve.
         This method also calculates z-spread to ensure that the present value is equal to market value at t=0.
 
         Args:
-            from_date (pd.Timestamp, optional): Target date for valuation. Defaults to today.
-            yield_curve: (pd.Series, optional): Series providing annualised zero rates for given dates.
-                Should be indexed by pd.Timestamp. If None, no discounting is applied.
+            yield_curve (pd.Series, optional): A series providing annualised zero rates for investments maturing on
+                given dates, beginning at issue date. If used, forward rates are calculated for investments beginning on
+                future dates. If neither yield_curve_dict nor yield_curve is provided, no discounting is applied.
+            yield_curve_dict: (dict, optional): A dictionary indexed by dates with pd.Series as values. The key provides the
+                start date for each yield curve provided as a pd.Timestamp. The value provides annualised zero rates for given dates.
+                Each series should be indexed by pd.Timestamp. A yield curve must be provided for each month beginning from issue.
+                If neither yield_curve_dict nor yield_curve is provided, 
+                no discounting is applied.
         
         Returns:
             pd.DataFrame: Expected market (present) value at regular monthly intervals.
         """
-        
-        # Data validation
-        if from_date is None:
-            from_date = pd.Timestamp.today().normalize()
-        else:
-            from_date = pd.Timestamp(from_date).normalize()
-
         # Generate z-spread if needed
-        if yield_curve is not None:
-            zspread = self._solve_z_spread(as_of=from_date, yield_curve=yield_curve)
-
-            print(f"Spread calculated! {zspread*100}%")
+        if yield_curve_dict is None:
+            if yield_curve is not None:
+                zspread = self._solve_z_spread(as_of=self.issue_date, yield_curve=yield_curve)
+        else:
+            try:
+                initial_yield_curve = yield_curve_dict[self.issue_date]
+                zspread = self._solve_z_spread(as_of=self.issue_date, yield_curve=initial_yield_curve)
+            except KeyError as e:
+                raise ValueError(f"The provided yield_curve_dict does not include sufficient data. Error: {e}")
         
         # Initialise new array to hold dates for checking present value
-        dates = [from_date]
+        dates = [self.issue_date]
 
         # Iterate until the working date is past the maturity date
-        working_date = from_date
+        working_date = self.issue_date
         while working_date < self.maturity_date:
-            working_date += rd.relativedelta(days=1)
+            working_date += rd.relativedelta(months=1)
             working_date = pd.Timestamp(working_date).normalize()
             dates.append(working_date)
         
         # Generate present value at every date
         present_values = []
         for date in dates:
-            present_value = self.expected_value(as_of=date, yield_curve=yield_curve, zspread=zspread)
+            # Calculate forward rates if necessary
+            temp_yield_curve = None
+            if yield_curve_dict is not None:
+                # The yield curves from the relevant date should be included
+                try:
+                    temp_yield_curve = yield_curve_dict[date]
+                except KeyError as e:
+                    raise ValueError(f"The provided yield_curve_dict does not include sufficient data for {date}. Error: {e}")
+            else:
+                # We need to calculate forward rates from the valuation date
+                temp_yield_curve = pd.Series()
+
+                for maturity_date, rate in yield_curve.items():
+                    # Calculate time until maturity from issue
+                    n_long = (maturity_date - self.issue_date).days / 365.0
+
+                    # Calculate time from issue until the valuation date
+                    n_short = (date - self.issue_date).days / 365.0
+
+                    # Linear interpolation to find spot rate between given rates in the yield curve
+                    curve_times = (yield_curve.index - self.issue_date).days / 365.0
+                    spot_long = float(np.interp(n_long, curve_times, yield_curve.values)) # spot rate at maturity date
+                    spot_short = float(np.interp(n_short, curve_times, yield_curve.values)) # spot rate at valuation date
+
+                    # Calculate forward rate
+                    if n_long != n_short:
+                        rate = self._forward_rate(spot_short, spot_long, n_short, n_long)
+                    else:
+                        rate = spot_long
+
+                    # Apply new forward rate to temp_yield_curve
+                    temp_yield_curve[maturity_date] = rate
+
+            present_value = self.expected_value(as_of=date, yield_curve=temp_yield_curve, zspread=zspread)
             present_values.append(round(present_value,2))
         
         return pd.DataFrame({"Date": dates, "Value": present_values})
