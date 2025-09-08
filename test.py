@@ -10,6 +10,7 @@ bond = Bond(
     coupon_rate=0.04,   # 4% annual coupon
     coupon_freq=2,      # semiannual
     maturity_date=maturity,
+    issue_date=as_of,
     market_value=99500.0,
     notional=100000.0
 )

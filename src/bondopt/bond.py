@@ -50,8 +50,10 @@ class Bond:
               - 12 = monthly
             Other divisors of 12 (e.g., 3, 6) are supported. Ignored for zero-coupon bonds.
         maturity_date (pd.Timestamp or str): 
-            Date when the bond matures and notional is repaid. Must not 
-            be in the past. Use format "YYYY-MM-DD" for string input.
+            Date when the bond matures and notional is repaid. Use format "YYYY-MM-DD" for string input.
+        issue_date (pd.Timestamp or str):
+            Date when the bond is issued and the cashflow schedule begins.
+            Use format "YYYY-MM-DD" for string input.
         market_value (float): 
             Current market price of the bond. Must be non-negative.
         notional (float): 
@@ -82,6 +84,7 @@ class Bond:
     coupon_rate: Optional[float]        # Annual rate e.g. 0.05
     coupon_freq: Optional[int]          # Payments per year (0 to 12)
     maturity_date: pd.Timestamp | str
+    issue_date: pd.Timestamp | str
     market_value: float
     notional: float
 
@@ -92,6 +95,11 @@ class Bond:
             self.maturity_date = pd.Timestamp(self.maturity_date)
         elif not isinstance(self.maturity_date, pd.Timestamp):
             raise TypeError("maturity_date must be a pandas.Timestamp object or a convertible string")
+        
+        if isinstance(self.issue_date, str):
+            self.issue_date = pd.Timestamp(self.issue_date)
+        elif not isinstance(self.issue_date, pd.Timestamp):
+            raise TypeError("issue_date must be a pandas.Timestamp object or a convertible string")
 
         # Perform data validation
         if self.asset_type not in ["fixed", "zero"]:
@@ -112,8 +120,6 @@ class Bond:
             raise ValueError("Expected non-negative value for market_value")
         if self.notional < 0:
             raise ValueError("Expected non-negative value for notional")
-        if self.maturity_date < pd.Timestamp.today().normalize():
-            raise ValueError(f"maturity_date {self.maturity_date.date()} is in the past")
         else:
             self.maturity_date = pd.Timestamp(self.maturity_date).normalize()
 
@@ -204,8 +210,8 @@ class Bond:
         else:
             as_of = pd.Timestamp(as_of).normalize()
 
-        # Generate all future cashflows from today
-        cashflows_dataframe = self.cashflows(as_of)
+        # Generate all future cashflows from issue date
+        cashflows_dataframe = self.cashflows(self.issue_date)
 
         # Initialise future value at 0 to be incremented later on
         future_value = 0.0
@@ -223,22 +229,52 @@ class Bond:
                 # Linear interpolation to find rate between given rates in the yield curve
                 curve_times = (yield_curve.index - as_of).days / 365.0
                 target_time = (cashflow_date - as_of).days / 365.0
-                rate = float(np.interp(target_time, curve_times, yield_curve.values)) + zspread
+                spot_long = float(np.interp(target_time, curve_times, yield_curve.values))
+                spot_short = float(np.interp(0, curve_times, yield_curve.values))
 
                 # Calculate time in years to the cashflow date
                 delta_years = (cashflow_date - as_of).days / 365.0
 
+                # Calculate forward rate
+                n_short = (as_of - self.issue_date).days / 365.0
+                n_long = target_time
+                rate = self._forward_rate(spot_short, spot_long, n_short, n_long)
+
                 # Discount cashflow to as_of
-                # Debug:
-                if as_of == pd.Timestamp("2025-10-07").normalize():
-                    print(delta_years)
-                    print(rate)
-                cashflow_amount /= (1 + rate) ** delta_years
+                cashflow_amount /= (1 + rate + zspread) ** delta_years
             
             # Add cashflow to total
             future_value += cashflow_amount
-        
+         
         return future_value
+    
+    def _forward_rate(self, spot_short, spot_long, n_short, n_long):
+        """
+        (Protected method)
+        Calculate the implied forward rate starting in n_short years and ending in n_long years.
+
+        Args:
+        spot_short: float
+            Spot rate (as a decimal, e.g. 0.03 for 3%) for maturity n_short
+        spot_long: float
+            Spot rate (as a decimal, e.g. 0.04 for 4%) for maturity n_long
+        n_short: float
+            Shorter maturity (in years)
+        n_long: float
+            Longer maturity (in years)
+
+        Returns:
+        Forward rate (as a decimal) for the period between n_short and n_long
+        """
+        if n_short == n_long:
+            return 0
+        # (1+S_long)^(n_long) = (1+S_short)^(n_short) * (1+f)^(n_long - n_short)
+        # (1+S_long)^(n_long) / (1+S_short)^(n_short) = (1+f)^(n_long - n_short)
+        # ((1+S_long)^(n_long) / (1+S_short)^(n_short)) ^ (1/(n_long - n_short)) = 1 + f
+        # ((1+S_long)^(n_long) / (1+S_short)^(n_short)) ^ (1/(n_long - n_short)) - 1 = f
+        ratio = (1 + spot_long) ** n_long / (1 + spot_short) ** n_short
+        fwd = ratio ** (1 / (n_long - n_short)) - 1
+        return fwd
     
     def get_present_values_daily(self, from_date: Optional[pd.Timestamp] = None, yield_curve: Optional[pd.Series] = None) -> pd.DataFrame:
         """
