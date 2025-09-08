@@ -90,11 +90,11 @@ class Bond:
     asset_type: str                     # "fixed" or "zero"
     coupon_rate: Optional[float]        # Annual rate e.g. 0.05
     coupon_freq: Optional[int]          # Payments per year (0 to 12)
-    default_risk_curve: Optional[pd.Series]
     maturity_date: pd.Timestamp | str
     issue_date: pd.Timestamp | str
     market_value: float
     notional: float
+    default_risk_curve: Optional[pd.Series] = None
 
     def __post_init__(self):
         # Perform data normalisation
