@@ -30,6 +30,7 @@ import numpy as np
 import dateutil.relativedelta as rd
 from scipy.optimize import brentq
 from copy import deepcopy
+from math import log, exp
 
 @dataclass
 class Bond:
@@ -50,6 +51,11 @@ class Bond:
               - 4 = quarterly
               - 12 = monthly
             Other divisors of 12 (e.g., 3, 6) are supported. Ignored for zero-coupon bonds.
+        default_risk_curve (pd.Series, optional):
+            Term structure of default risk for this bond.
+            Indexed by integer years representing the horizon.
+            Values are annualised cumulative probability of default (float) (e.g. 0.0028 = 0.28%).
+            Each value is the cumulative annualised probability of default by the end of each horizon.
         maturity_date (pd.Timestamp or str): 
             Date when the bond matures and notional is repaid. Use format "YYYY-MM-DD" for string input.
         issue_date (pd.Timestamp or str):
@@ -84,6 +90,7 @@ class Bond:
     asset_type: str                     # "fixed" or "zero"
     coupon_rate: Optional[float]        # Annual rate e.g. 0.05
     coupon_freq: Optional[int]          # Payments per year (0 to 12)
+    default_risk_curve: Optional[pd.Series]
     maturity_date: pd.Timestamp | str
     issue_date: pd.Timestamp | str
     market_value: float
@@ -125,6 +132,9 @@ class Bond:
             self.maturity_date = pd.Timestamp(self.maturity_date).normalize()
         if self.issue_date > self.maturity_date:
             raise ValueError("Issue date must be before maturity date")
+        if self.default_risk_curve is not None:
+            if (len(self.default_risk_curve) < (self.maturity_date - self.issue_date).days // 365):
+                raise ValueError("Not enough default risk data provided")
 
     def cashflows(self, valuation_date: Optional[pd.Timestamp] = None) -> pd.DataFrame:
         """
@@ -325,7 +335,7 @@ class Bond:
                     raise ValueError(f"The provided yield_curve_dict does not include sufficient data for {date}. Error: {e}")
             else:
                 # We need to calculate forward rates from the valuation date
-                temp_yield_curve = pd.Series()
+                temp_yield_curve = pd.Series(dtype=float)
 
                 for maturity_date, rate in yield_curve.items():
                     # Calculate time until maturity from issue
@@ -352,3 +362,60 @@ class Bond:
             present_values.append(round(present_value,2))
         
         return pd.DataFrame({"Date": dates, "Value": present_values})
+    
+    def get_total_survival_rate(self, after_years: float) -> float:  
+        """
+        Calculates the expected total survival rate for a bond using the provided default risk curve
+
+        Args:
+            after_years (float): The number of years after issue for the calculation
+        
+        Returns:
+            Expected survival rate after the given number of years (float) e.g. 0.95 = 95%
+        
+        Notes:
+            Survival is assumed to decay exponentially over time: S(t) = S(t_0) * e^(-lambda(t-t_0))
+            (Lambda is a hazard rate that we will solve for)
+        """
+        if self.default_risk_curve is None:
+            return 1.0
+        
+        # Get discrete survival rate values
+        survival_rate_curve = 1.0 - self.default_risk_curve.astype(float)
+        survival_rate_curve.sort_index()
+        times = survival_rate_curve.index.to_numpy(dtype=float)
+
+        # If after_years is within the known range
+        if times[0]-1 < after_years < times[-1]:
+            # Find index of last time <= after_years
+            index_high = np.searchsorted(times, after_years, side='right')
+            index_low = index_high-1
+
+            t_low = float(times[index_low])
+            S_low = float(survival_rate_curve.iloc[index_low])
+            t_high = float(times[index_high])
+            S_high = float(survival_rate_curve.iloc[index_high])
+
+        # If after_years is before the first known time
+        elif after_years <= times[0]:
+            t_low = 0.0
+            S_low = 1.0
+            t_high = float(times[0])
+            S_high = float(survival_rate_curve.iloc[0])
+
+        # If after_years is equal to the last known time
+        elif after_years == times[-1]:
+            return float(survival_rate_curve.iloc[-1])
+
+        # If after_years is after the last known time
+        elif after_years > times[-1]:
+            raise ValueError(f"The value of {after_years} for after_years is outside the range specified by the default risk curve provided.")
+        
+        # Solve for lambda over [t_low, t_high]
+        delta = t_high - t_low
+        if delta == 0:
+            # Times coincide, return S_low
+            return float(S_low)
+        lam = -np.log(max(S_high, 1e-12) / max(S_low, 1e-12)) / delta #safe for zero-division
+        S_after_years = S_low * np.exp(-lam * (after_years - t_low))
+        return float(max(0.0, min(1.0, S_after_years)))
