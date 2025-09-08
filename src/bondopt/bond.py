@@ -386,7 +386,7 @@ class Bond:
         times = survival_rate_curve.index.to_numpy(dtype=float)
 
         # If after_years is within the known range
-        if times[0]-1 < after_years < times[-1]:
+        if times[0] < after_years < times[-1]:
             # Find index of last time <= after_years
             index_high = np.searchsorted(times, after_years, side='right')
             index_low = index_high-1
