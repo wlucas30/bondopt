@@ -213,3 +213,51 @@ def test_get_present_values_monthly_with_multiple_yield_curves():
 
     # 5. Value should increase up to notional
     assert df["Value"].is_monotonic_increasing
+
+def test_bond_with_default_risk():
+    # Simple zero-coupon bond
+    maturity = pd.Timestamp.today().normalize() + rd.relativedelta(years=3)
+    bond = Bond(
+        asset_type="zero",
+        coupon_rate=None,
+        coupon_freq=None,
+        maturity_date=maturity,
+        issue_date=pd.Timestamp.today().normalize(),
+        market_value=900,
+        notional=1000,
+        default_risk_curve=pd.Series([0.03, 0.04, 0.05], index=[1,2,3])
+    )
+
+    # Integer time
+    survival_rate = bond.get_total_survival_rate(after_years=3)
+    assert isinstance(survival_rate, float)
+    assert survival_rate == 0.95
+
+    # Float time   
+    survival_rate = bond.get_total_survival_rate(after_years=2.5)
+    assert isinstance(survival_rate, float)
+    assert 0.95 < survival_rate < 0.96
+
+def test_one_year_bond_with_default_risk():
+    # Simple zero-coupon bond
+    maturity = pd.Timestamp.today().normalize() + rd.relativedelta(years=1)
+    bond = Bond(
+        asset_type="zero",
+        coupon_rate=None,
+        coupon_freq=None,
+        maturity_date=maturity,
+        issue_date=pd.Timestamp.today().normalize(),
+        market_value=900,
+        notional=1000,
+        default_risk_curve=pd.Series([0.03], index=[1])
+    )
+
+    # Integer time
+    survival_rate = bond.get_total_survival_rate(after_years=1)
+    assert isinstance(survival_rate, float)
+    assert survival_rate == 0.97
+
+    # Float time   
+    survival_rate = bond.get_total_survival_rate(after_years=0.5)
+    assert isinstance(survival_rate, float)
+    assert 0.97 < survival_rate < 1
