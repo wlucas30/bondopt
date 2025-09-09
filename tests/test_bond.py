@@ -261,3 +261,23 @@ def test_one_year_bond_with_default_risk():
     survival_rate = bond.get_total_survival_rate(after_years=0.5)
     assert isinstance(survival_rate, float)
     assert 0.97 < survival_rate < 1
+
+def test_bond_with_default_risk_projected_notional_values():
+    # Simple zero-coupon bond
+    maturity = pd.Timestamp.today().normalize() + rd.relativedelta(years=3)
+    bond = Bond(
+        asset_type="zero",
+        coupon_rate=None,
+        coupon_freq=None,
+        maturity_date=maturity,
+        issue_date=pd.Timestamp.today().normalize(),
+        market_value=900,
+        notional=1000,
+        default_risk_curve=pd.Series([0.03, 0.04, 0.05], index=[1,2,3])
+    )
+
+    nv = bond.get_projected_notional_values()
+
+    assert len(nv) == 37
+    assert nv[bond.issue_date] == bond.notional
+    assert nv[bond.issue_date + rd.relativedelta(years=1)] == bond.notional * 0.97
