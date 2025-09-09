@@ -203,14 +203,16 @@ class Bond:
 
         return float(spread)
     
-    def expected_value(self, as_of: Optional[pd.Timestamp] = None, yield_curve: Optional[pd.Series] = None, zspread=0) -> float:
+    def expected_value(self, as_of: Optional[pd.Timestamp] = None, yield_curve: Optional[pd.Series] = None, zspread=0, use_default_risk: Optional[bool]=False) -> float:
         """
         Calculates the expected future value of a bond at a given date, optionally applying discounting using a yield curve.
+        Warning: This function does not apply z-spread automatically! Spread must be provided!
 
         Args:
             as_of (pd.Timestamp, optional): Target date for valuation. Defaults to today.
-            yield_curve: (pd.Series, optional): Series providing annualised zero rates for given dates.
+            yield_curve (pd.Series, optional): Series providing annualised zero rates for given dates.
                 Should be indexed by pd.Timestamp. If None, no discounting is applied.
+            use_default_risk (bool, optional): Indicates whether expected values should be multiplied by expected survival rate
         
         Returns:
             float: Expected market (present) value at the target date.
@@ -221,6 +223,8 @@ class Bond:
             as_of = pd.Timestamp.today().normalize()
         else:
             as_of = pd.Timestamp(as_of).normalize()
+        if use_default_risk and self.default_risk_curve is None:
+            raise Exception("No default risk curve provided!")
 
         # Generate all future cashflows from issue date
         cashflows_dataframe = self.cashflows(self.issue_date)
@@ -251,7 +255,11 @@ class Bond:
             
             # Add cashflow to total
             future_value += cashflow_amount
-         
+
+        if use_default_risk:
+            after_years = round((as_of - self.issue_date).days / 365.0,2)
+            future_value *= self.get_total_survival_rate(after_years)
+
         return future_value
     
     def _forward_rate(self, spot_short, spot_long, n_short, n_long):
@@ -282,7 +290,7 @@ class Bond:
         fwd = ratio ** (1 / (n_long - n_short)) - 1
         return fwd
     
-    def get_present_values_monthly(self, yield_curve: Optional[pd.Series] = None, yield_curve_dict: Optional[dict] = None) -> pd.DataFrame:
+    def get_present_values_monthly(self, yield_curve: Optional[pd.Series] = None, yield_curve_dict: Optional[dict] = None, use_default_risk: Optional[bool] = False) -> pd.DataFrame:
         """
         Calculates the expected future present value of a bond daily from a given date, optionally applying discounting using a yield curve.
         This method also calculates z-spread to ensure that the present value is equal to market value at t=0.
@@ -296,6 +304,7 @@ class Bond:
                 Each series should be indexed by pd.Timestamp. A yield curve must be provided for each month beginning from issue.
                 If neither yield_curve_dict nor yield_curve is provided, 
                 no discounting is applied.
+            use_default_risk (bool, optional): Indicates whether expected values should be multiplied by expected survival rate
         
         Returns:
             pd.DataFrame: Expected market (present) value at regular monthly intervals.
@@ -357,7 +366,7 @@ class Bond:
                     # Apply new forward rate to temp_yield_curve
                     temp_yield_curve[maturity_date] = rate
 
-            present_value = self.expected_value(as_of=date, yield_curve=temp_yield_curve, zspread=zspread)
+            present_value = self.expected_value(as_of=date, yield_curve=temp_yield_curve, zspread=zspread, use_default_risk=use_default_risk)
             present_values.append(round(present_value,2))
         
         return pd.DataFrame({"Date": dates, "Value": present_values})
@@ -427,6 +436,9 @@ class Bond:
         Returns:
             pd.Series object representing the expected total notional value after regular time intervals.
         """
+
+        if self.default_risk_curve is None:
+            raise Exception("No default risk curve provided!")
 
         # Generate a list of dates for which projected notional value should be calculated
         dates = []
