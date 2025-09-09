@@ -413,3 +413,38 @@ class Bond:
         # If after_years is after the last known time
         elif after_years > times[-1]:
             raise ValueError(f"The value of {after_years} for after_years is outside the range specified by the default risk curve provided.")
+                
+    def get_projected_notional_values(self, interval: Optional[rd.relativedelta]=rd.relativedelta(months=1)):
+        """
+        Generates a pd.Series object representing the expected total notional value after regular time intervals between
+        issue and maturity, according to the provided default risk curve.
+        Warning: Will raise an exception if no default risk curve is provided when creating Bond object.
+
+        Args:
+            interval (dateutil.relativedelta.relativedelta, optional): The time interval between values to be generated.
+                Defaults to 1 month if none provided.
+        
+        Returns:
+            pd.Series object representing the expected total notional value after regular time intervals.
+        """
+
+        # Generate a list of dates for which projected notional value should be calculated
+        dates = []
+
+        working_date = self.issue_date
+        while working_date < self.maturity_date:
+            if working_date not in dates:
+                dates.append(working_date)
+
+            working_date += interval
+        
+        if self.maturity_date not in dates:
+            dates.append(self.maturity_date)
+        
+        # Calculated projected notional value for each required date
+        projected_notional_values = []
+        for date in dates:
+            after_years = round((date - self.issue_date).days / 365,2)
+            projected_notional_values.append(self.notional * self.get_total_survival_rate(after_years))
+
+        return pd.Series(projected_notional_values, index=dates)
