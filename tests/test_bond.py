@@ -281,3 +281,30 @@ def test_bond_with_default_risk_projected_notional_values():
     assert len(nv) == 37
     assert nv[bond.issue_date] == bond.notional
     assert nv[bond.issue_date + rd.relativedelta(years=1)] == bond.notional * 0.97
+
+
+def test_projected_notional_values():
+    b = Bond(
+        asset_type="zero",
+        coupon_rate=None,
+        coupon_freq=None,
+        maturity_date=pd.Timestamp("2030-01-01"),
+        default_risk_curve=pd.Series([0.01, 0.02, 0.03, 0.04, 0.05], index=[1,2,3,4,5]),
+        issue_date=pd.Timestamp("2025-01-01"),
+        market_value=95000,
+        notional=100000
+    )
+
+    as_of = pd.Timestamp("2027-01-01")
+    # Simple yield curve: 5% annual flat for all future dates
+    future_dates = pd.date_range(start=as_of, end=b.maturity_date, freq="YE")
+    yc = pd.Series([0.05] * len(future_dates), index=future_dates)
+
+    ev = b.expected_value(as_of=b.issue_date, yield_curve=yc, use_default_risk=False)
+    ev1 = b.expected_value(as_of=as_of, yield_curve=yc, use_default_risk=True)
+
+    pvm = b.get_present_values_monthly(yield_curve=yc)
+    pvm1 = b.get_present_values_monthly(yield_curve=yc, use_default_risk=True)
+
+    assert ev != ev1
+    assert not pvm.equals(pvm1)
