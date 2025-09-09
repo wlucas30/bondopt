@@ -29,8 +29,6 @@ import pandas as pd
 import numpy as np
 import dateutil.relativedelta as rd
 from scipy.optimize import brentq
-from copy import deepcopy
-from math import log, exp
 
 @dataclass
 class Bond:
@@ -372,10 +370,6 @@ class Bond:
         
         Returns:
             Expected survival rate after the given number of years (float) e.g. 0.95 = 95%
-        
-        Notes:
-            Survival is assumed to decay exponentially over time: S(t) = S(t_0) * e^(-lambda(t-t_0))
-            (Lambda is a hazard rate that we will solve for)
         """
         if self.default_risk_curve is None:
             return 1.0
@@ -396,12 +390,14 @@ class Bond:
             t_high = float(times[index_high])
             S_high = float(survival_rate_curve.iloc[index_high])
 
+            delta_years = t_high - t_low
+
+            return (S_low ** t_low) * (S_high ** delta_years)
+
         # If after_years is before the first known time
         elif after_years <= times[0]:
-            t_low = 0.0
-            S_low = 1.0
-            t_high = float(times[0])
-            S_high = float(survival_rate_curve.iloc[0])
+            default_rate_annualised = float(survival_rate_curve.iloc[0])
+            return default_rate_annualised ** (after_years)
 
         # If after_years is equal to the last known time
         elif after_years == times[-1]:
@@ -410,12 +406,3 @@ class Bond:
         # If after_years is after the last known time
         elif after_years > times[-1]:
             raise ValueError(f"The value of {after_years} for after_years is outside the range specified by the default risk curve provided.")
-        
-        # Solve for lambda over [t_low, t_high]
-        delta = t_high - t_low
-        if delta == 0:
-            # Times coincide, return S_low
-            return float(S_low)
-        lam = -np.log(max(S_high, 1e-12) / max(S_low, 1e-12)) / delta #safe for zero-division
-        S_after_years = S_low * np.exp(-lam * (after_years - t_low))
-        return float(max(0.0, min(1.0, S_after_years)))
