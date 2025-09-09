@@ -231,12 +231,12 @@ def test_bond_with_default_risk():
     # Integer time
     survival_rate = bond.get_total_survival_rate(after_years=3)
     assert isinstance(survival_rate, float)
-    assert survival_rate == 0.95
+    assert abs(survival_rate) - 0.857375 <= 1e-5
 
     # Float time   
     survival_rate = bond.get_total_survival_rate(after_years=2.5)
     assert isinstance(survival_rate, float)
-    assert 0.95 < survival_rate < 0.96
+    assert 0.857375 < survival_rate < 0.9216
 
 def test_one_year_bond_with_default_risk():
     # Simple zero-coupon bond

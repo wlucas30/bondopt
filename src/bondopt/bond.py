@@ -29,6 +29,7 @@ import pandas as pd
 import numpy as np
 import dateutil.relativedelta as rd
 from scipy.optimize import brentq
+from copy import deepcopy
 
 @dataclass
 class Bond:
@@ -375,9 +376,9 @@ class Bond:
             return 1.0
         
         # Get discrete survival rate values
-        survival_rate_curve = 1.0 - self.default_risk_curve.astype(float)
-        survival_rate_curve.sort_index()
-        times = survival_rate_curve.index.to_numpy(dtype=float)
+        default_rates = deepcopy(self.default_risk_curve)
+        default_rates.sort_index()
+        times = default_rates.index.to_numpy(dtype=float)
 
         # If after_years is within the known range
         if times[0] < after_years < times[-1]:
@@ -386,22 +387,28 @@ class Bond:
             index_low = index_high-1
 
             t_low = float(times[index_low])
-            S_low = float(survival_rate_curve.iloc[index_low])
+            D_low = float(default_rates.iloc[index_low])
             t_high = float(times[index_high])
-            S_high = float(survival_rate_curve.iloc[index_high])
+            D_high = float(default_rates.iloc[index_high])
 
-            delta_years = t_high - t_low
+            delta_years = after_years - t_low
 
-            return (S_low ** t_low) * (S_high ** delta_years)
+            # We have the cumulative rate, and need to convert to marginal
+            # The survival rate after after_years will be (Cumulative rate up to n-1) ^ n-1 * (Marginal rate for year n)^delta_years
+
+            # Calculate marginal rate for last time period
+            marginal_survival_rate = ((1-D_high) ** t_high) / ((1-D_low) ** t_low)
+
+            return ((1-D_low) ** t_low) * (marginal_survival_rate ** delta_years)
 
         # If after_years is before the first known time
         elif after_years <= times[0]:
-            default_rate_annualised = float(survival_rate_curve.iloc[0])
-            return default_rate_annualised ** (after_years)
+            default_rate_annualised = float(default_rates.iloc[0])
+            return (1-default_rate_annualised) ** after_years
 
         # If after_years is equal to the last known time
         elif after_years == times[-1]:
-            return float(survival_rate_curve.iloc[-1])
+            return (1 - float(default_rates.iloc[-1])) ** times[-1]
 
         # If after_years is after the last known time
         elif after_years > times[-1]:
