@@ -4,6 +4,7 @@ import pandas as pd
 import pytest
 import dateutil.relativedelta as rd
 from bondopt.bond import Bond
+from bondopt.portfolio import Portfolio
 
 def test_fixed_bond_with_string_date():
     bond = Bond(
@@ -308,3 +309,45 @@ def test_projected_notional_values():
 
     assert ev != ev1
     assert not pvm.equals(pvm1)
+
+def test_list_bonds_returns_dataframe():
+    # Create a Portfolio
+    portfolio = Portfolio()
+
+    # Create two sample Bond objects
+    bond1 = Bond(
+        cusip="123456AA1",
+        asset_type="fixed",
+        coupon_rate=0.05,
+        coupon_freq=2,
+        issue_date=pd.Timestamp("2020-01-01"),
+        maturity_date=pd.Timestamp("2030-01-01"),
+        notional=1000,
+        market_value=980,
+    )
+
+    bond2 = Bond(
+        cusip="789012BB2",
+        asset_type="zero",
+        coupon_rate=None,
+        coupon_freq=None,
+        issue_date=pd.Timestamp("2021-06-30"),
+        maturity_date=pd.Timestamp("2026-06-30"),
+        notional=500,
+        market_value=450,
+    )
+
+    # Add bonds to portfolio
+    portfolio.add_bond(bond1)
+    portfolio.add_bond(bond2)
+
+    # Call list_bonds
+    df = portfolio.list_bonds()
+
+    # Assertions
+    assert isinstance(df, pd.DataFrame)
+    assert list(df.columns) == ["CUSIP", "Notional", "Maturity Date"]
+    assert len(df) == 2
+    assert set(df["CUSIP"]) == {"123456AA1", "789012BB2"}
+    assert df.loc[df["CUSIP"] == "123456AA1", "Notional"].iloc[0] == 1000
+    assert df.loc[df["CUSIP"] == "789012BB2", "Maturity Date"].iloc[0] == pd.Timestamp("2026-06-30")

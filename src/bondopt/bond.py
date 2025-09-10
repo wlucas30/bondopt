@@ -98,7 +98,6 @@ class Bond:
         1 2030-06-30    102500.0
     
     """
-    cusip: Optional[str]
     asset_type: str                     # "fixed" or "zero"
     coupon_rate: Optional[float]        # Annual rate e.g. 0.05
     coupon_freq: Optional[int]          # Payments per year (0 to 12)
@@ -107,6 +106,7 @@ class Bond:
     market_value: float
     notional: float
     default_risk_curve: Optional[pd.Series] = None
+    cusip: Optional[str] = None
 
     def __post_init__(self):
         # Perform data normalisation
