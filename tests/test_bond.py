@@ -344,6 +344,9 @@ def test_list_bonds_returns_dataframe():
     # Call list_bonds
     df = portfolio.list_bonds()
 
+    # Call cashflows
+    cf = portfolio.cashflows("2020-01-01")
+
     # Assertions
     assert isinstance(df, pd.DataFrame)
     assert list(df.columns) == ["CUSIP", "Notional", "Maturity Date"]
@@ -351,3 +354,4 @@ def test_list_bonds_returns_dataframe():
     assert set(df["CUSIP"]) == {"123456AA1", "789012BB2"}
     assert df.loc[df["CUSIP"] == "123456AA1", "Notional"].iloc[0] == 1000
     assert df.loc[df["CUSIP"] == "789012BB2", "Maturity Date"].iloc[0] == pd.Timestamp("2026-06-30")
+    assert len(cf) == 21
