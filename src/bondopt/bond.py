@@ -504,4 +504,4 @@ class Bond:
         else:
             data = {"CUSIP": self.cusip, "Notional": self.notional, "Maturity Date": self.maturity_date}
 
-        return pd.DataFrame(list(data.items()), columns=["Attribute", "Value"])
+        return pd.DataFrame(data, columns=["CUSIP", "Notional", "Maturity Date"])
