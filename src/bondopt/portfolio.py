@@ -24,6 +24,7 @@ Example:
 
 from bondopt.bond import Bond
 from dataclasses import dataclass
+from typing import Optional
 import pandas as pd
 
 @dataclass
@@ -39,6 +40,7 @@ class Portfolio:
         list_bonds() -> pd.DataFrame
             Lists all Bond stored in the Portfolio.
         cashflows(valuation_date=None) -> pd.DataFrame
+            Generates a schedule of future cashflows for all assets in the Portfolio.
         expected_value() -> 
         get_present_values_monthly() ->
     """
@@ -91,3 +93,33 @@ class Portfolio:
             bonds = pd.concat([bonds, summary], ignore_index=True)
         
         return bonds
+    
+    def cashflows(self, valuation_date: Optional[pd.Timestamp] = None) -> pd.DataFrame:
+        """
+        Generates a schedule of future cashflows for all assets in the Portfolio.
+
+        Args:
+            valuation_date (pd.Timestamp, optional)
+                The date from which the cashflow schedule should
+                begin. Defaults to today if None.
+        
+        Returns:
+            pd.DataFrame: Table displaying information about all future cashflows.
+        """
+
+        if isinstance(valuation_date, str):
+            valuation_date = pd.Timestamp(valuation_date).normalize()
+
+        if valuation_date is None:
+            valuation_date = pd.Timestamp.today().normalize()
+
+        cashflows_dataframe = pd.DataFrame(columns=["CUSIP", "Date", "Cashflow"])
+
+        for asset in self.assets:
+            cf = asset.cashflows(valuation_date=valuation_date)
+
+            for _, cashflow in cf.iterrows():
+                data = pd.DataFrame([{"CUSIP": asset.cusip, "Date": cashflow["Date"], "Cashflow": cashflow["Cashflow"]}])
+                cashflows_dataframe = pd.concat([data, cashflows_dataframe], ignore_index=True)
+        
+        return cashflows_dataframe.sort_values("Date").reset_index(drop=True)
