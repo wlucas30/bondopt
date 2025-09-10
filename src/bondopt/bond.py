@@ -501,7 +501,7 @@ class Bond:
                 "Market Value": self.market_value,
                 "Has Default Risk Curve": self.default_risk_curve is not None,
             }
+            return pd.DataFrame(list(data.items()), columns=["CUSIP", "Notional", "Maturity Date"])
         else:
             data = {"CUSIP": self.cusip, "Notional": self.notional, "Maturity Date": self.maturity_date}
-
-        return pd.DataFrame(data, columns=["CUSIP", "Notional", "Maturity Date"])
+            return pd.DataFrame([data], columns=["CUSIP", "Notional", "Maturity Date"])
