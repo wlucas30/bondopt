@@ -74,7 +74,15 @@ class Bond:
             Generates a schedule of future cashflows from the valuation date until maturity.
         expected_value(as_of=None, yield_curve=None) -> float
             Calculates the expected future value of a bond at a given date, optionally applying discounting using a yield curve.
-        
+        get_present_values_monthly(yield_curve=None, yield_curve_dict=None, use_default_risk=False) -> pd.DataFrame
+            Calculates the expected future present value of a bond monthly from a given date.
+        get_total_survival_rate(after_years) -> float
+            Calculates the expected total survival rate for a bond using the provided default risk curve.
+        get_projected_notional_values(interval=rd.relativedelta(months=1)) -> pd.Series
+            Generates a pd.Series object representing the expected total notional value after regular time intervals between
+            issue and maturity, according to the provided default risk curve.
+        summary() -> pd.DataFrame
+            Returns a summary of the bond's stored attributes and derived details.
     Notes:
         - Currently supports fixed and zero-coupon bonds.
         - This assumes coupon_freq divides 12 evenly (e.g. 1, 2, 3, 4, 6, 12).
@@ -301,7 +309,7 @@ class Bond:
     
     def get_present_values_monthly(self, yield_curve: Optional[pd.Series] = None, yield_curve_dict: Optional[dict] = None, use_default_risk: Optional[bool] = False) -> pd.DataFrame:
         """
-        Calculates the expected future present value of a bond daily from a given date, optionally applying discounting using a yield curve.
+        Calculates the expected future present value of a bond monthly from a given date, optionally applying discounting using a yield curve.
         This method also calculates z-spread to ensure that the present value is equal to market value at t=0.
 
         Args:
@@ -432,7 +440,7 @@ class Bond:
         elif after_years > times[-1]:
             raise ValueError(f"The value of {after_years} for after_years is outside the range specified by the default risk curve provided.")
                 
-    def get_projected_notional_values(self, interval: Optional[rd.relativedelta]=rd.relativedelta(months=1)):
+    def get_projected_notional_values(self, interval: Optional[rd.relativedelta]=rd.relativedelta(months=1)) -> pd.Series:
         """
         Generates a pd.Series object representing the expected total notional value after regular time intervals between
         issue and maturity, according to the provided default risk curve.
@@ -469,3 +477,25 @@ class Bond:
             projected_notional_values.append(self.notional * self.get_total_survival_rate(after_years))
 
         return pd.Series(projected_notional_values, index=dates)
+    
+    def summary(self) -> pd.DataFrame:
+        """
+        Returns a summary of the bond's stored attributes and derived details.
+
+        Returns:
+            pd.DataFrame: Tabular summary of the bond's key attributes.
+        """
+
+        data = {
+            "CUSIP": self.cusip,
+            "Asset Type": self.asset_type,
+            "Coupon Rate": f"{self.coupon_rate:.4f}" if self.coupon_rate is not None else None,
+            "Coupon Freq": self.coupon_freq,
+            "Issue Date": self.issue_date.strftime("%Y-%m-%d"),
+            "Maturity Date": self.maturity_date.strftime("%Y-%m-%d"),
+            "Notional": self.notional,
+            "Market Value": self.market_value,
+            "Has Default Risk Curve": self.default_risk_curve is not None,
+        }
+
+        return pd.DataFrame(list(data.items()), columns=["Attribute", "Value"])
