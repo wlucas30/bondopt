@@ -81,7 +81,7 @@ class Bond:
         get_projected_notional_values(interval=rd.relativedelta(months=1)) -> pd.Series
             Generates a pd.Series object representing the expected total notional value after regular time intervals between
             issue and maturity, according to the provided default risk curve.
-        summary() -> pd.DataFrame
+        summary(verbose=False) -> pd.DataFrame
             Returns a summary of the bond's stored attributes and derived details.
     Notes:
         - Currently supports fixed and zero-coupon bonds.
@@ -478,24 +478,30 @@ class Bond:
 
         return pd.Series(projected_notional_values, index=dates)
     
-    def summary(self) -> pd.DataFrame:
+    def summary(self, verbose: Optional[bool] = False) -> pd.DataFrame:
         """
         Returns a summary of the bond's stored attributes and derived details.
+
+        Args:
+            verbose (str, Optional): Indicates whether a full summary should be provided.
 
         Returns:
             pd.DataFrame: Tabular summary of the bond's key attributes.
         """
 
-        data = {
-            "CUSIP": self.cusip,
-            "Asset Type": self.asset_type,
-            "Coupon Rate": f"{self.coupon_rate:.4f}" if self.coupon_rate is not None else None,
-            "Coupon Freq": self.coupon_freq,
-            "Issue Date": self.issue_date.strftime("%Y-%m-%d"),
-            "Maturity Date": self.maturity_date.strftime("%Y-%m-%d"),
-            "Notional": self.notional,
-            "Market Value": self.market_value,
-            "Has Default Risk Curve": self.default_risk_curve is not None,
-        }
+        if verbose:
+            data = {
+                "CUSIP": self.cusip,
+                "Asset Type": self.asset_type,
+                "Coupon Rate": f"{self.coupon_rate:.4f}" if self.coupon_rate is not None else None,
+                "Coupon Freq": self.coupon_freq,
+                "Issue Date": self.issue_date.strftime("%Y-%m-%d"),
+                "Maturity Date": self.maturity_date.strftime("%Y-%m-%d"),
+                "Notional": self.notional,
+                "Market Value": self.market_value,
+                "Has Default Risk Curve": self.default_risk_curve is not None,
+            }
+        else:
+            data = {"CUSIP": self.cusip, "Notional": self.notional, "Maturity Date": self.maturity_date}
 
         return pd.DataFrame(list(data.items()), columns=["Attribute", "Value"])
