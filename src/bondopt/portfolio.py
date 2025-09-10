@@ -94,7 +94,7 @@ class Portfolio:
         
         return bonds
     
-    def cashflows(self, valuation_date: Optional[pd.Timestamp] = None) -> pd.DataFrame:
+    def cashflows(self, valuation_date: Optional[pd.Timestamp] = None, aggregate_cashflows: bool = False) -> pd.DataFrame:
         """
         Generates a schedule of future cashflows for all assets in the Portfolio.
 
@@ -102,6 +102,8 @@ class Portfolio:
             valuation_date (pd.Timestamp, optional)
                 The date from which the cashflow schedule should
                 begin. Defaults to today if None.
+            aggregate_cashflows (bool, optional)
+                If True, groups by Date and sums across bonds
         
         Returns:
             pd.DataFrame: Table displaying information about all future cashflows.
@@ -122,4 +124,21 @@ class Portfolio:
                 data = pd.DataFrame([{"CUSIP": asset.cusip, "Date": cashflow["Date"], "Cashflow": cashflow["Cashflow"]}])
                 cashflows_dataframe = pd.concat([data, cashflows_dataframe], ignore_index=True)
         
-        return cashflows_dataframe.sort_values("Date").reset_index(drop=True)
+        cashflows_dataframe = cashflows_dataframe.sort_values("Date").reset_index(drop=True)
+
+        if aggregate_cashflows:
+            # Group by Date, sum cashflows, and join CUSIPs
+            cashflows_dataframe = (
+                cashflows_dataframe
+                .groupby("Date", as_index=False)
+                .agg({
+                    "Cashflow": "sum", "CUSIP": lambda x : ", ".join(sorted(set(x)))
+                })
+                .sort_values("Date")
+                .reset_index(drop=True)
+            )
+
+            # Reorder columns
+            cashflows_dataframe = cashflows_dataframe[["CUSIP", "Date", "Cashflow"]]
+
+        return cashflows_dataframe
