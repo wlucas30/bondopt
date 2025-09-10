@@ -355,3 +355,43 @@ def test_list_bonds_returns_dataframe():
     assert df.loc[df["CUSIP"] == "123456AA1", "Notional"].iloc[0] == 1000
     assert df.loc[df["CUSIP"] == "789012BB2", "Maturity Date"].iloc[0] == pd.Timestamp("2026-06-30")
     assert len(cf) == 21
+
+
+def test_list_bonds_returns_dataframe_with_aggregate_cashflows():
+    # Create a Portfolio
+    portfolio = Portfolio()
+
+    # Create two sample Bond objects
+    bond1 = Bond(
+        cusip="123456AA1",
+        asset_type="fixed",
+        coupon_rate=0.05,
+        coupon_freq=2,
+        issue_date=pd.Timestamp("2020-01-01"),
+        maturity_date=pd.Timestamp("2030-01-01"),
+        notional=1000,
+        market_value=980,
+    )
+
+    bond2 = Bond(
+        cusip="789012BB2",
+        asset_type="zero",
+        coupon_rate=None,
+        coupon_freq=None,
+        issue_date=pd.Timestamp("2020-01-31"),
+        maturity_date=pd.Timestamp("2030-01-01"),
+        notional=500,
+        market_value=450,
+    )
+
+    # Add bonds to portfolio
+    portfolio.add_bond(bond1)
+    portfolio.add_bond(bond2)
+
+    # Call cashflows
+    cf = portfolio.cashflows("2020-01-01", aggregate_cashflows=True)
+
+    print(cf)
+
+    # Assertions
+    assert len(cf) == 20
