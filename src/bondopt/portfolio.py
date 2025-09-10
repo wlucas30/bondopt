@@ -36,6 +36,8 @@ class Portfolio:
             Adds a provided Bond to the Portfolio.
         remove_bond() -> None
             Removes all instances of bonds from the Portfolio with CUSIP matching the provided value.
+        list_bonds() -> pd.DataFrame
+            Lists all Bond stored in the Portfolio.
         cashflows(valuation_date=None) -> pd.DataFrame
         expected_value() -> 
         get_present_values_monthly() ->
@@ -73,3 +75,19 @@ class Portfolio:
         if not found:
             raise ValueError("No Bond with the provided CUSIP value was found.")
         
+    def list_bonds(self) -> pd.DataFrame:
+        """
+        Lists all Bond stored in the Portfolio.
+        
+        Returns:
+            pd.DataFrame: Table displaying information about all bonds held.
+        """
+
+        cols = ["CUSIP", "Notional", "Maturity Date"] # Data to be displayed for each bond
+        bonds = pd.DataFrame(columns=cols)
+
+        for bond in self.assets:
+            summary = bond.summary(verbose=False)
+            bonds = pd.concat([bonds, summary], ignore_index=True)
+        
+        return bonds
