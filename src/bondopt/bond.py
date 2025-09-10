@@ -30,6 +30,7 @@ import numpy as np
 import dateutil.relativedelta as rd
 from scipy.optimize import brentq
 from copy import deepcopy
+import uuid
 
 @dataclass
 class Bond:
@@ -37,6 +38,9 @@ class Bond:
     Represents a fixed-income instrument.
 
     Attributes:
+        cusip (str, optional):
+            A bond CUSIP is a unique, nine-character alphanumeric code that serves as a serial number for a specific security.
+            If none provided, a random UUID is stored instead.
         asset_type (str): 
             Type of bond. Supported values are "fixed" (coupon-bearing) 
             and "zero" (zero-coupon bond).
@@ -86,6 +90,7 @@ class Bond:
         1 2030-06-30    102500.0
     
     """
+    cusip: Optional[str]
     asset_type: str                     # "fixed" or "zero"
     coupon_rate: Optional[float]        # Annual rate e.g. 0.05
     coupon_freq: Optional[int]          # Payments per year (0 to 12)
@@ -134,6 +139,10 @@ class Bond:
         if self.default_risk_curve is not None:
             if (len(self.default_risk_curve) < (self.maturity_date - self.issue_date).days // 365):
                 raise ValueError("Not enough default risk data provided")
+        
+        # Store a unique identifier for each bond, if one is not provided
+        if self.cusip is None:
+            self.cusip = str(uuid.uuid4())
 
     def cashflows(self, valuation_date: Optional[pd.Timestamp] = None) -> pd.DataFrame:
         """
