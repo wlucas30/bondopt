@@ -75,7 +75,7 @@ class Bond:
         expected_value(as_of=None, yield_curve=None) -> float
             Calculates the expected future value of a bond at a given date, optionally applying discounting using a yield curve.
         get_present_values_monthly(yield_curve=None, yield_curve_dict=None, use_default_risk=False) -> pd.DataFrame
-            Calculates the expected future present value of a bond monthly from a given date.
+            Calculates the expected future present value of a bond monthly.
         get_total_survival_rate(after_years) -> float
             Calculates the expected total survival rate for a bond using the provided default risk curve.
         get_projected_notional_values(interval=rd.relativedelta(months=1)) -> pd.Series
@@ -309,7 +309,7 @@ class Bond:
     
     def get_present_values_monthly(self, yield_curve: Optional[pd.Series] = None, yield_curve_dict: Optional[dict] = None, use_default_risk: Optional[bool] = False) -> pd.DataFrame:
         """
-        Calculates the expected future present value of a bond monthly from a given date, optionally applying discounting using a yield curve.
+        Calculates the expected future present value of a bond monthly, optionally applying discounting using a yield curve.
         This method also calculates z-spread to ensure that the present value is equal to market value at t=0.
 
         Args:
@@ -330,6 +330,8 @@ class Bond:
         if yield_curve_dict is None:
             if yield_curve is not None:
                 zspread = self._solve_z_spread(as_of=self.issue_date, yield_curve=yield_curve)
+            else:
+                zspread = 0.0
         else:
             try:
                 initial_yield_curve = yield_curve_dict[self.issue_date]
