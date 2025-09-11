@@ -391,7 +391,54 @@ def test_list_bonds_returns_dataframe_with_aggregate_cashflows():
     # Call cashflows
     cf = portfolio.cashflows("2020-01-01", aggregate_cashflows=True)
 
-    print(cf)
-
     # Assertions
     assert len(cf) == 20
+
+def test_get_present_values_monthly_with_multiple_assets():
+    # Create a couple of zero-coupon bonds
+    today = pd.Timestamp.today().normalize()
+    maturity1 = today + pd.Timedelta(days=365)  # 1 year
+    maturity2 = today + pd.Timedelta(days=730)  # 2 years
+
+    bond1 = Bond(
+        asset_type="zero",
+        coupon_rate=None,
+        coupon_freq=None,
+        issue_date=today,
+        maturity_date=maturity1,
+        market_value=950,
+        notional=1000,
+        cusip="BOND1"
+    )
+    bond2 = Bond(
+        asset_type="zero",
+        coupon_rate=None,
+        coupon_freq=None,
+        issue_date=today,
+        maturity_date=maturity2,
+        market_value=900,
+        notional=1000,
+        cusip="BOND2"
+    )
+
+    portfolio = Portfolio()
+    portfolio.add_bond(bond1)
+    portfolio.add_bond(bond2)
+
+    # Flat yield curve (1% annual)
+    yield_curve = pd.Series(
+        [0.01, 0.01],
+        index=[maturity1, maturity2]
+    )
+
+    df = portfolio.get_present_values_monthly(from_date=today, yield_curve=yield_curve)
+
+    # Basic checks on structure
+    assert isinstance(df, pd.DataFrame)
+    assert "BOND1" in df.columns
+    assert "BOND2" in df.columns
+    assert "Total" in df.columns
+
+    # Dates should be monthly starting from today
+    assert df.index.is_monotonic_increasing
+    assert df.index[0] == today
