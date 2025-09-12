@@ -435,10 +435,10 @@ def test_get_present_values_monthly_with_multiple_assets():
 
     # Basic checks on structure
     assert isinstance(df, pd.DataFrame)
-    assert "BOND1" in df.columns
-    assert "BOND2" in df.columns
-    assert "Total" in df.columns
+    assert "BOND1" in df.index
+    assert "BOND2" in df.index
+    assert "Total" in df.index
 
     # Dates should be monthly starting from today
-    assert df.index.is_monotonic_increasing
-    assert df.index[0] == today
+    assert df.columns.is_monotonic_increasing
+    assert df.columns[0] == today.strftime("%Y-%m-%d")

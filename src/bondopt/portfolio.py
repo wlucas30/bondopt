@@ -281,4 +281,7 @@ class Portfolio:
         # Fill missing values
         df = df.fillna(0.0).round(2)
 
-        return df
+        # Convert index (CUSIPs, Cash, Total) to string labels
+        df.index = df.index.astype(str)
+
+        return df.T # transpose
