@@ -107,6 +107,7 @@ class Bond:
     notional: float
     default_risk_curve: Optional[pd.Series] = None
     cusip: Optional[str] = None
+    ignore_spread: Optional[bool] = False
 
     def __post_init__(self):
         # Perform data normalisation
@@ -148,9 +149,10 @@ class Bond:
             if (len(self.default_risk_curve) < (self.maturity_date - self.issue_date).days // 365):
                 raise ValueError("Not enough default risk data provided")
         
-        # Store a unique identifier for each bond, if one is not provided
+        # Store a unique identifier for each bond
+        self.uuid = str(uuid.uuid4())
         if self.cusip is None:
-            self.cusip = str(uuid.uuid4())
+            self.cusip = ""
 
     def cashflows(self, valuation_date: Optional[pd.Timestamp] = None) -> pd.DataFrame:
         """
@@ -493,7 +495,7 @@ class Bond:
 
         if verbose:
             data = {
-                "CUSIP": self.cusip,
+                "CUSIP": f"{self.cusip}, {self.uuid}",
                 "Asset Type": self.asset_type,
                 "Coupon Rate": f"{self.coupon_rate:.4f}" if self.coupon_rate is not None else None,
                 "Coupon Freq": self.coupon_freq,
@@ -503,7 +505,7 @@ class Bond:
                 "Market Value": self.market_value,
                 "Has Default Risk Curve": self.default_risk_curve is not None,
             }
-            return pd.DataFrame(list(data.items()), columns=["CUSIP", "Notional", "Maturity Date"])
+            return pd.DataFrame([data])
         else:
-            data = {"CUSIP": self.cusip, "Notional": self.notional, "Maturity Date": self.maturity_date}
+            data = {"CUSIP": f"{self.cusip}, {self.uuid}", "Notional": self.notional, "Maturity Date": self.maturity_date}
             return pd.DataFrame([data], columns=["CUSIP", "Notional", "Maturity Date"])

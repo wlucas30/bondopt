@@ -23,6 +23,7 @@ Example:
 # SPDX-License-Identifier: MIT
 
 from bondopt.bond import Bond
+from bondopt.reinvest import ReinvestmentStrategy
 from dataclasses import dataclass
 from typing import Optional
 import dateutil.relativedelta as rd
@@ -44,7 +45,7 @@ class Portfolio:
         cashflows(valuation_date=None) -> pd.DataFrame
             Generates a schedule of future cashflows for all assets in the Portfolio.
         expected_value() -> 
-        get_present_values_monthly(from_date=None, yield_curve=None, yield_curve_dict=None, use_default_risk=False) -> pd.DataFrame:
+        get_present_values_monthly(from_date=None, to_date=None, yield_curve=None, yield_curve_dict=None, use_default_risk=False, reinvestment_strategy=None) -> pd.DataFrame:
             Calculates the expected future present value of assets monthly from a given date, or today if none provided.
     """
 
@@ -146,22 +147,24 @@ class Portfolio:
 
         return cashflows_dataframe
     
-    def get_present_values_monthly(self, from_date: pd.Timestamp = None, yield_curve: Optional[pd.Series] = None, yield_curve_dict: Optional[dict] = None, use_default_risk: Optional[bool] = False) -> pd.DataFrame:
+    def get_present_values_monthly(self, from_date: pd.Timestamp = None, to_date: pd.Timestamp = None, yield_curve: Optional[pd.Series] = None, yield_curve_dict: Optional[dict] = None, use_default_risk: Optional[bool] = False, reinvestment_strategy: Optional[ReinvestmentStrategy] = None) -> pd.DataFrame:
         """
         Calculates the expected future present value of assets monthly from a given date, optionally applying discounting using a yield curve.
         This method also calculates z-spread to ensure that the present value is equal to market value at t=0.
         If no from_date is provided, it will be valued from today.
 
         Args:
-            from_date (pd.Timestamp, optional): The date from which valuation should begin
+            from_date (pd.Timestamp, optional): The date from which valuation should begin. Defaults to today.
+            to_date (pd.Timestamp, optional): The date at which valuation should end. Defaults to last maturity date in Portfolio.
             yield_curve (pd.Series, optional): A series providing annualised zero rates for investments maturing on
                 given dates, beginning at issue date. If used, forward rates are calculated for investments beginning on
                 future dates. If neither yield_curve_dict nor yield_curve is provided, no discounting is applied.
             yield_curve_dict: (dict, optional): A dictionary indexed by dates with pd.Series as values. The key provides the
                 start date for each yield curve provided as a pd.Timestamp. The value provides annualised zero rates for given dates.
-                Each series should be indexed by pd.Timestamp. A yield curve must be provided monthly from valuation.
+                Each series should be indexed by pd.Timestamp. A yield curve must be provided monthly from valuation up until 1 year after end_date.
                 If neither yield_curve_dict nor yield_curve is provided, no discounting is applied.
             use_default_risk (bool, optional): Indicates whether expected values should be multiplied by expected survival rate
+            reinvestment_strategy (bondopt.reinvest.ReinvestmentStrategy, optional): Provides a reinvestment strategy for cash.
         
         Returns:
             pd.DataFrame: Expected market (present) value at regular monthly intervals.
@@ -177,6 +180,12 @@ class Portfolio:
         else:
             from_date = pd.Timestamp(from_date).normalize()
 
+        # Normalise given to_date
+        if to_date is None:
+            to_date = max(self.list_bonds()["Maturity Date"])
+        else:
+            to_date = pd.Timestamp(to_date).normalize()
+
         # Initialise empty list to store results
         values_monthly = []
 
@@ -186,10 +195,11 @@ class Portfolio:
         # Create cache for forward rates
         forward_rates = {}
 
-        while working_date <= max(self.list_bonds()["Maturity Date"]):
+        while working_date <= to_date:
             total_period_value = 0 # will be incremented
 
             row = {"Date": working_date}
+            cash_in_period = 0.0
 
             # Iterate through each asset held
             for asset in self.__assets:
@@ -197,17 +207,20 @@ class Portfolio:
                     continue # skip inactive assets
 
                 # Generate z-spread if needed
-                if yield_curve_dict is None:
-                    if yield_curve is not None:
-                        zspread = asset._solve_z_spread(as_of=asset.issue_date, yield_curve=yield_curve)
-                    else:
-                        zspread = 0.0
+                if asset.ignore_spread:
+                    zspread = 0.0
                 else:
-                    try:
-                        initial_yield_curve = yield_curve_dict[asset.issue_date]
-                        zspread = asset._solve_z_spread(as_of=asset.issue_date, yield_curve=initial_yield_curve)
-                    except KeyError as e:
-                        raise ValueError(f"The provided yield_curve_dict does not include sufficient data. Error: {e}")
+                    if yield_curve_dict is None:
+                        if yield_curve is not None:
+                            zspread = asset._solve_z_spread(as_of=asset.issue_date, yield_curve=yield_curve)
+                        else:
+                            zspread = 0.0
+                    else:
+                        try:
+                            initial_yield_curve = yield_curve_dict[asset.issue_date]
+                            zspread = asset._solve_z_spread(as_of=asset.issue_date, yield_curve=initial_yield_curve)
+                        except KeyError as e:
+                            raise ValueError(f"The provided yield_curve_dict does not include sufficient data. Error: {e}")
 
                 # Calculate forward rates if necessary
                 temp_yield_curve = None
@@ -249,12 +262,59 @@ class Portfolio:
 
                 # Calculate present value using calculated yield curves
                 present_value = asset.expected_value(as_of=working_date, yield_curve=temp_yield_curve, zspread=zspread, use_default_risk=use_default_risk)
-                
+
                 # Add value to running total for this period
-                row[asset.cusip] = present_value
+                row[f"{asset.cusip}, {asset.uuid}"] = present_value
+
+                # Add total cashflows for this period
+                cf = asset.cashflows()
+                cf1 = cf[working_date-rd.relativedelta(months=1) < cf["Date"]]
+                cf2 = cf1[cf1["Date"] <= working_date]
+                cash_in_period += sum(cf2["Cashflow"])
             
             # Add monthly running total to the dict
             values_monthly.append(row)
+
+            # Add new assets from reinvestment strategy if provided
+            if reinvestment_strategy is not None:
+                # We need a yield curve from working_date
+                temp_yield_curve = None
+                if yield_curve_dict is not None:
+                    # The yield curves from the relevant date should be included
+                    try:
+                        temp_yield_curve = yield_curve_dict[working_date]
+                    except KeyError as e:
+                        raise ValueError(f"The provided yield_curve_dict does not include sufficient data for {working_date}. Error: {e}")
+                elif yield_curve is not None:
+                    # We need to calculate forward rates from the issue date
+                    temp_yield_curve = pd.Series(dtype=float)
+
+                    for maturity_date, rate in yield_curve.items():
+                        # Calculate time until maturity from issue
+                        n_long = (maturity_date - from_date).days / 365.0
+
+                        # Calculate time from issue until the valuation date
+                        n_short = (working_date - from_date).days / 365.0
+
+                        # Linear interpolation to find spot rate between given rates in the yield curve
+                        curve_times = (yield_curve.index - from_date).days / 365.0
+                        spot_long = float(np.interp(n_long, curve_times, yield_curve.values)) # spot rate at maturity date
+                        spot_short = float(np.interp(n_short, curve_times, yield_curve.values)) # spot rate at valuation date
+
+                        # Calculate forward rate
+                        if n_long != n_short:
+                            rate = asset._forward_rate(spot_short, spot_long, n_short, n_long)
+                        else:
+                            rate = spot_long
+
+                        # Apply new forward rate to temp_yield_curve
+                        temp_yield_curve[maturity_date] = rate
+                else:
+                    temp_yield_curve = None
+
+                new_assets = reinvestment_strategy.apply(cash_available=cash_in_period, today=working_date, yield_curve=temp_yield_curve)
+                for asset in new_assets:
+                    self.add_bond(bond=asset)
 
             working_date += rd.relativedelta(months=1)
 
@@ -262,16 +322,19 @@ class Portfolio:
         df = pd.DataFrame(values_monthly).set_index("Date")
 
         # Ensure all CUSIPs exist as columns
-        all_cusips = [a.cusip for a in self.__assets]
+        all_cusips = [f"{a.cusip}, {a.uuid}" for a in self.__assets]
         df = df.reindex(columns=all_cusips, fill_value=0.0)
 
         # Calculate cash values for each date in the dataframe
-        cash = []
-        cf = self.cashflows()
-        for date in df.index:
-            # Get all cashflows before this date
-            cf_before = sum(cf[cf["Date"] < date]["Cashflow"]) # (strict inequality because cash should be added in the next month)
-            cash.append(cf_before)
+        if reinvestment_strategy is not None:
+            cash = [0.0] * len(df.index)
+        else:
+            cash = []
+            cf = self.cashflows()
+            for date in df.index:
+                # Get all cashflows before this date
+                cf_before = sum(cf[cf["Date"] < date]["Cashflow"]) # (strict inequality because cash should be added in the next month)
+                cash.append(cf_before)
 
         df = df.assign(Cash = cash)
 
@@ -284,4 +347,10 @@ class Portfolio:
         # Convert index (CUSIPs, Cash, Total) to string labels
         df.index = df.index.astype(str)
 
-        return df.T # transpose
+        # Transpose
+        df = df.T
+
+        # Drop rows where all values are 0.0
+        df = df.loc[~(df == 0.0).all(axis=1)]
+
+        return df
