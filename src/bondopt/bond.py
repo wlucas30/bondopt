@@ -237,49 +237,50 @@ class Bond:
             float: Expected market (present) value at the target date.
         """
 
-        # Data validation
+        # Normalise as_of
         if as_of is None:
             as_of = pd.Timestamp.today().normalize()
         else:
             as_of = pd.Timestamp(as_of).normalize()
+
+        # Default-risk guard
         if use_default_risk and self.default_risk_curve is None:
             raise Exception("No default risk curve provided!")
+        
+        # Get all future cashflows
+        cf = self.cashflows(self.issue_date)
+        cf["Date"] = cf["Date"].dt.normalize()
 
-        # Generate all future cashflows from issue date
-        cashflows_dataframe = self.cashflows(self.issue_date)
+        # Keep only cashflows on/after as_of
+        cf = cf.loc[cf["Date"] >= as_of]
+        if cf.empty:
+            return 0.0
+        
+        # Time to cashflows in years
+        delta_years = (cf["Date"] - as_of).dt.days.values / 365.0
 
-        # Initialise future value at 0 to be incremented later on
-        future_value = 0.0
+        if yield_curve is not None:
+            # Yield curve times (in years) and rates
+            curve_times = (yield_curve.index - as_of).days / 365.0
+            curve_rates = yield_curve.values.astype(float)
 
-        # Iterate through each cashflow payment
-        for _, row in cashflows_dataframe.iterrows():
-            cashflow_date, cashflow_amount = row["Date"].normalize(), row["Cashflow"]
+            # Interpolate spot rates for all cashflow maturities at once
+            spot_rates = np.interp(delta_years, curve_times, curve_rates)
 
-            # Skip if the date is before the target date (cash already received)
-            if cashflow_date < as_of:
-                continue
-                
-            # Discounting is only applied when yield_curve != None
-            if yield_curve is not None:
-                # Linear interpolation to find rate between given rates in the yield curve
-                curve_times = (yield_curve.index - as_of).days / 365.0
-                target_time = (cashflow_date - as_of).days / 365.0
-                spot_rate = float(np.interp(target_time, curve_times, yield_curve.values)) # spot rate at cashflow date
+            # Apply discounting
+            discounted = cf["Cashflow"].values / np.power(1 + spot_rates + zspread, delta_years)
+        else:
+            discounted = cf["Cashflow"].values
+        
+        # Calculate total expected value
+        present_value = discounted.sum()
 
-                # Calculate time in years to the cashflow date
-                delta_years = (cashflow_date - as_of).days / 365.0
-
-                # Discount cashflow to as_of
-                cashflow_amount /= (1 + spot_rate + zspread) ** delta_years
-            
-            # Add cashflow to total
-            future_value += cashflow_amount
-
+        # Apply survival probability if required
         if use_default_risk:
-            after_years = round((as_of - self.issue_date).days / 365.0,2)
-            future_value *= self.get_total_survival_rate(after_years)
+            after_years = round((as_of - self.issue_date).days / 365.0, 2)
+            present_value *= self.get_total_survival_rate(after_years)
 
-        return future_value
+        return float(present_value)
     
     def _forward_rate(self, spot_short, spot_long, n_short, n_long):
         """

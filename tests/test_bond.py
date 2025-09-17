@@ -479,7 +479,7 @@ def test_reinvestment_assets_appear_next_month():
     # Run projection for 2 months with reinvestment
     df = p.get_present_values_monthly(
         from_date=today,
-        to_date=today + pd.DateOffset(months=13),
+        to_date=today + rd.relativedelta(months=13),
         reinvestment_strategy=strategy,
         yield_curve=yield_curve
     )
