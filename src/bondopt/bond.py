@@ -329,19 +329,7 @@ class Bond:
         Returns:
             pd.DataFrame: Expected market (present) value at regular monthly intervals.
         """
-        # Generate z-spread if needed
-        if yield_curve_dict is None:
-            if yield_curve is not None:
-                zspread = self._solve_z_spread(as_of=self.issue_date, yield_curve=yield_curve)
-            else:
-                zspread = 0.0
-        else:
-            try:
-                initial_yield_curve = yield_curve_dict[self.issue_date]
-                zspread = self._solve_z_spread(as_of=self.issue_date, yield_curve=initial_yield_curve)
-            except KeyError as e:
-                raise ValueError(f"The provided yield_curve_dict does not include sufficient data. Error: {e}")
-        
+
         # Initialise new array to hold dates for checking present value
         dates = [self.issue_date]
 
@@ -351,28 +339,20 @@ class Bond:
             working_date += rd.relativedelta(months=1)
             working_date = pd.Timestamp(working_date).normalize()
             dates.append(working_date)
-        
-        # Generate present value at every date
-        present_values = []
-        for date in dates:
-            # Calculate forward rates if necessary
-            temp_yield_curve = None
-            if yield_curve_dict is not None:
-                # The yield curves from the relevant date should be included
-                try:
-                    temp_yield_curve = yield_curve_dict[date]
-                except KeyError as e:
-                    raise ValueError(f"The provided yield_curve_dict does not include sufficient data for {date}. Error: {e}")
-            else:
+
+        # If needed, build dict of forward rates
+        if yield_curve_dict is None:
+            yield_curve_dict = {}
+            for start_date in dates:
                 # We need to calculate forward rates from the valuation date
                 temp_yield_curve = pd.Series(dtype=float)
 
                 for maturity_date, rate in yield_curve.items():
-                    # Calculate time until maturity from issue
-                    n_long = (maturity_date - self.issue_date).days / 365.0
+                    # Calculate time until maturity from start date
+                    n_long = (maturity_date - start_date).days / 365.0
 
-                    # Calculate time from issue until the valuation date
-                    n_short = (date - self.issue_date).days / 365.0
+                    # Calculate time from issue until start date
+                    n_short = (start_date - self.issue_date).days / 365.0
 
                     # Linear interpolation to find spot rate between given rates in the yield curve
                     curve_times = (yield_curve.index - self.issue_date).days / 365.0
@@ -387,12 +367,56 @@ class Bond:
 
                     # Apply new forward rate to temp_yield_curve
                     temp_yield_curve[maturity_date] = rate
-
-            present_value = self.expected_value(as_of=date, yield_curve=temp_yield_curve, zspread=zspread, use_default_risk=use_default_risk)
-            present_values.append(round(present_value,2))
+                
+                # Add new yield curve to yield_curve_dict
+                yield_curve_dict[start_date] = temp_yield_curve
         
-        return pd.DataFrame({"Date": dates, "Value": present_values})
-    
+        # Check all dates provided by yield curve
+        for date in dates:
+            if date not in yield_curve_dict:
+                raise ValueError(f"Insufficient yield curves provided in yield_curve_dict. No yield curve provided for {date}.")
+
+        # Generate z-spread if needed
+        try:
+            initial_yield_curve = yield_curve_dict[self.issue_date]
+            zspread = self._solve_z_spread(as_of=self.issue_date, yield_curve=initial_yield_curve)
+        except KeyError as e:
+            raise ValueError(f"The provided yield_curve_dict does not include sufficient data. Error: {e}")
+
+        # Get cashflows
+        cf = self.cashflows(self.issue_date)
+        cf_dates, cf_amounts = cf["Date"], cf["Cashflow"]
+        cf_dates = pd.to_datetime(cf_dates).values  # ensure numpy datetime64
+        cf_amounts = np.array(cf_amounts, dtype=float)
+
+        # Compute time-to-cashflow matrix. Shape: (len(dates), len(cf_dates))
+        date_array = pd.to_datetime(dates).values
+        t_cf = (cf_dates[None, :] - date_array[:, None]).astype("timedelta64[D]").astype(float) / 365.0
+
+        # Compute discount factors
+        discount_factors = np.zeros_like(t_cf)
+
+        for i, d in enumerate(dates):
+            yc = yield_curve_dict[d]
+            curve_times = (yc.index - d).days / 365.0
+            spot_rates = np.interp(t_cf[i], curve_times, yc.values)
+            spot_rates = np.where(t_cf[i] > 0, spot_rates + zspread, np.nan)
+
+            mask = t_cf[i] >= 0
+            discount_factors[i, mask] = (1+spot_rates[mask]) ** (-t_cf[i, mask])
+
+        # Compute present value for each valuation date
+        pv_matrix = cf_amounts[None, :] * discount_factors
+        pv_vector = np.nansum(pv_matrix, axis=1)
+
+        # Apply default risk if necessary
+        if use_default_risk:
+            survival = np.array([self.get_total_survival_rate(after_years=round(((t-self.issue_date).days / 365.0),2)) for t in dates])
+            pv_vector *= survival
+
+        # Return present values in a DataFrame
+        return pd.DataFrame({"Date": dates, "Value": pv_vector}).round(2)
+     
     def get_total_survival_rate(self, after_years: float) -> float:  
         """
         Calculates the expected total survival rate for a bond using the provided default risk curve
