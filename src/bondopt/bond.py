@@ -341,7 +341,7 @@ class Bond:
             dates.append(working_date)
 
         # If needed, build dict of forward rates
-        if yield_curve_dict is None:
+        if yield_curve_dict is None and yield_curve is not None:
             yield_curve_dict = {}
             for start_date in dates:
                 # We need to calculate forward rates from the valuation date
@@ -367,6 +367,17 @@ class Bond:
 
                     # Apply new forward rate to temp_yield_curve
                     temp_yield_curve[maturity_date] = rate
+                
+                # Add new yield curve to yield_curve_dict
+                yield_curve_dict[start_date] = temp_yield_curve
+        elif yield_curve is None:
+            yield_curve_dict = {}
+            for start_date in dates:
+                # We need to calculate forward rates from the valuation date
+                temp_yield_curve = pd.Series(dtype=float)
+                for end_date in dates:
+                    # Default to 0s
+                    temp_yield_curve[end_date] = 0.0
                 
                 # Add new yield curve to yield_curve_dict
                 yield_curve_dict[start_date] = temp_yield_curve
