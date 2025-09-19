@@ -57,7 +57,7 @@ class CSVHandler:
         }
 
         # Case 1: Portfolio
-        if all(col in col_list for col in col_reqs["portfolio"]) and df.shape[0] > 1:
+        if all(col in col_list for col in col_reqs["portfolio"]):
             # Create new Portfolio object
             pf = Portfolio()
 
@@ -94,13 +94,13 @@ class CSVHandler:
 
             # Iterate through each provided yield curve
             for _, row in df.iterrows():
-                dates = col_list[col_list != "From Date"]
+                dates = [c for c in col_list if c != "From Date"]
                 try:
                     dates_normalised = [pd.Timestamp(date).normalize() for date in dates]
                 except Exception as e:
                     raise Exception(f"Error: bad date format provided! {e}")
 
-                rates = [float(row[date]) for date in dates_normalised]
+                rates = [float(row[date]) for date in dates]
                 yc = pd.Series(rates, index=dates_normalised).dropna()
                 ycd[row["From Date"]] = yc
             
@@ -111,7 +111,7 @@ class CSVHandler:
             _, row = next(df.iterrows())
             dates = col_list
             dates_normalised = [pd.Timestamp(date).normalize() for date in dates]
-            rates = [float(row[date]) for date in dates_normalised]
+            rates = [float(row[date]) for date in dates]
             yc = pd.Series(rates, index=dates_normalised).dropna()
             return yc
 
