@@ -6,6 +6,7 @@ import dateutil.relativedelta as rd
 from bondopt.bond import Bond
 from bondopt.portfolio import Portfolio
 from bondopt.reinvest import ReinvestmentStrategy
+from bondopt.csv import CSVHandler
 
 def test_fixed_bond_with_string_date():
     bond = Bond(
@@ -484,5 +485,12 @@ def test_reinvestment_assets_appear_next_month():
         yield_curve=yield_curve
     )
 
-    print()
-    print(df)
+def test_portfolio_csv():
+    # Create CSV handler object
+    handler = CSVHandler()
+
+    # Encode the required CSV
+    pf = handler.encode("tests/portfolio1.csv")
+
+    assert isinstance(pf, Portfolio)
+    assert pf.list_bonds().shape[0] == 3    # there are 3 bonds in csv
