@@ -512,7 +512,17 @@ def test_yield_curve_dict_csv():
     # Encode the required CSV
     ycd = handler.encode("tests/yield_curve_dict1.csv")
 
-    print(ycd)
-
     assert isinstance(ycd, dict)
     assert len(ycd) == 5
+
+def test_reinvestment_strategy_csv():
+    # Create CSV handler object
+    handler = CSVHandler()
+
+    # Encode the required CSV
+    rs = handler.encode("tests/reinvestment_strategy1.csv")
+
+    print(rs)
+
+    assert isinstance(rs, ReinvestmentStrategy)
+    assert len(rs.table) == 2
