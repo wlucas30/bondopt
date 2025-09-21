@@ -494,3 +494,25 @@ def test_portfolio_csv():
 
     assert isinstance(pf, Portfolio)
     assert pf.list_bonds().shape[0] == 3    # there are 3 bonds in csv
+
+def test_yield_curve_csv():
+    # Create CSV handler object
+    handler = CSVHandler()
+
+    # Encode the required CSV
+    yc = handler.encode("tests/yield_curve1.csv")
+
+    assert isinstance(yc, pd.Series)
+    assert yc.shape[0] == 6
+
+def test_yield_curve_dict_csv():
+    # Create CSV handler object
+    handler = CSVHandler()
+
+    # Encode the required CSV
+    ycd = handler.encode("tests/yield_curve_dict1.csv")
+
+    print(ycd)
+
+    assert isinstance(ycd, dict)
+    assert len(ycd) == 5
