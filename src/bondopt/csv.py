@@ -102,7 +102,7 @@ class CSVHandler:
 
                 rates = [float(row[date]) for date in dates]
                 yc = pd.Series(rates, index=dates_normalised).dropna()
-                ycd[row["From Date"]] = yc
+                ycd[pd.Timestamp(row["From Date"]).normalize()] = yc
             
             return ycd
                 
