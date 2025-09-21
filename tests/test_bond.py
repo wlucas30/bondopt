@@ -522,7 +522,5 @@ def test_reinvestment_strategy_csv():
     # Encode the required CSV
     rs = handler.encode("tests/reinvestment_strategy1.csv")
 
-    print(rs)
-
     assert isinstance(rs, ReinvestmentStrategy)
     assert len(rs.table) == 2
