@@ -76,7 +76,7 @@ class CSVHandler:
                             market_value = asset["Market Value"],
                             notional = asset["Notional"],
                             cusip = asset.get("CUSIP", None),
-                            default_risk_curve = asset.get("Default Risk Curve", None)
+                            default_risk_curve = self.__dfc_format(asset.get("Default Risk Curve", None))
                         )
                     except Exception as e:
                         raise Exception(f"Error: bad data provided! {e}")
@@ -139,3 +139,19 @@ class CSVHandler:
             return True
         except:
             return False
+        
+    def __dfc_format(self, dfc):
+        """
+        (Private method)
+        Formats default risk curve from CSV input
+        """
+        if dfc is None:
+            return None
+        else:
+            # Split string into list of floats
+            values = [float(x.strip()) for x in dfc.split(",")]
+
+            # Generate index for default risk curve
+            idx = range(1, len(values)+1)
+
+            return pd.Series(values, index=idx)
