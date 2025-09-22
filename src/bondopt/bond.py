@@ -44,6 +44,8 @@ class Bond:
         asset_type (str): 
             Type of bond. Supported values are "fixed" (coupon-bearing) 
             and "zero" (zero-coupon bond).
+        asset_rating (str, optional):
+            Rating of creditworthiness for the bond. Used for importing preset default risk from stored tables.
         coupon_rate (float, optional): 
             Annual coupon rate (e.g., 0.05 for 5%). Must be non-negative. 
             Not used for zero-coupon bonds.
@@ -98,13 +100,14 @@ class Bond:
         1 2030-06-30    102500.0
     
     """
-    asset_type: str                     # "fixed" or "zero"
+    asset_type: str                     # "fixed" or "zero"         # "AAA", "BB", etc
     coupon_rate: Optional[float]        # Annual rate e.g. 0.05
     coupon_freq: Optional[int]          # Payments per year (0 to 12)
     maturity_date: pd.Timestamp | str
     issue_date: pd.Timestamp | str
     market_value: float
     notional: float
+    asset_rating: Optional[str] = None
     default_risk_curve: Optional[pd.Series] = None
     cusip: Optional[str] = None
     ignore_spread: Optional[bool] = False
@@ -533,6 +536,7 @@ class Bond:
             data = {
                 "CUSIP": f"{self.cusip}, {self.uuid}",
                 "Asset Type": self.asset_type,
+                "Asset Rating": self.asset_rating if self.asset_rating is not None else "Unknown",
                 "Coupon Rate": f"{self.coupon_rate:.4f}" if self.coupon_rate is not None else None,
                 "Coupon Freq": self.coupon_freq,
                 "Issue Date": self.issue_date.strftime("%Y-%m-%d"),

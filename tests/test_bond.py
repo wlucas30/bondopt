@@ -513,7 +513,7 @@ def test_yield_curve_dict_csv():
     ycd = handler.encode("tests/yield_curve_dict1.csv")
 
     assert isinstance(ycd, dict)
-    assert len(ycd) == 5
+    assert len(ycd) == 60
 
 def test_reinvestment_strategy_csv():
     # Create CSV handler object
@@ -524,3 +524,24 @@ def test_reinvestment_strategy_csv():
 
     assert isinstance(rs, ReinvestmentStrategy)
     assert len(rs.table) == 2
+
+def test_store_default_rate_table():
+    import bondopt
+    bondopt.import_default_rates("tests/default_rates1.csv", "Bond")
+    
+    assert list(bondopt.default_table["Bond"].columns.values) == ["Asset Rating", "Default Risk Curve"]
+
+def test_imported_default_rates():
+    import bondopt
+
+    # Import default rates from CSV
+    bondopt.import_default_rates("tests/default_rates1.csv", "Bond")
+
+    # Create CSV handler object
+    handler = CSVHandler()
+
+    # Encode the required CSV
+    pf = handler.encode("tests/portfolio2.csv")
+
+    assert isinstance(pf, Portfolio)
+    assert pf.list_bonds().shape[0] == 3    # there are 3 bonds in csv

@@ -9,6 +9,7 @@ Classes:
 
 # SPDX-License-Identifier: MIT
 
+from bondopt import dfc_format, default_table
 from bondopt.bond import Bond
 from bondopt.portfolio import Portfolio
 from bondopt.reinvest import ReinvestmentStrategy
@@ -53,7 +54,8 @@ class CSVHandler:
             "bond": ["Asset Type", "Issue Date", "Maturity Date", "Coupon Rate", "Coupon Frequency", "Market Value", "Notional"],
             "yield_curve_dict": ["From Date"],
             "yield_curve": [], # consists of just dates, no required columns
-            "reinvestment_strategy": ["Asset Rating", "Allocation %", "Spread Adjustment (bps)"]
+            "reinvestment_strategy": ["Asset Rating", "Allocation %", "Spread Adjustment (bps)"],
+            "default_table": ["Asset Rating", "Default Risk Curve"]
         }
 
         # Case 1: Portfolio
@@ -75,11 +77,20 @@ class CSVHandler:
                             coupon_freq = asset["Coupon Frequency"],
                             market_value = asset["Market Value"],
                             notional = asset["Notional"],
+                            asset_rating = asset.get("Asset Rating", None),
                             cusip = asset.get("CUSIP", None),
-                            default_risk_curve = self.__dfc_format(asset.get("Default Risk Curve", None))
+                            default_risk_curve = dfc_format(asset.get("Default Risk Curve", None))
                         )
                     except Exception as e:
                         raise Exception(f"Error: bad data provided! {e}")
+                    
+                    # Use preset default risk curve if possible
+                    if ("Preset Default Table" in asset) and not isinstance(b.default_risk_curve, pd.Series) and b.default_risk_curve == None:
+                        try:
+                            dt = default_table[asset["Preset Default Table"]]
+                            b.default_risk_curve = dfc_format(dt.loc[dt["Asset Rating"] == b.asset_rating, "Default Risk Curve"].iloc[0])
+                        except KeyError as e:
+                            raise KeyError(f"Error: No default risk table found with name {asset["Preset Default Table"]}. Try using bondopt.import_default_rates. {e}")
 
                     # Add Bond to Portfolio
                     pf.add_bond(b)
@@ -124,8 +135,12 @@ class CSVHandler:
                 raise Exception(f"Error: Failed to create ReinvestmentStrategy with the required data. {e}")
 
             return rs
+        
+        # Case 5: Default risk curve table
+        elif all(col in col_list for col in col_reqs["default_table"]):
+            return df # return without any pre-processing
             
-        # Case 5: Invalid input
+        # Case 6: Invalid input
         else:
             raise ValueError("The provided CSV file is formatted incorrectly!")
         
@@ -139,19 +154,3 @@ class CSVHandler:
             return True
         except:
             return False
-        
-    def __dfc_format(self, dfc):
-        """
-        (Private method)
-        Formats default risk curve from CSV input
-        """
-        if dfc is None:
-            return None
-        else:
-            # Split string into list of floats
-            values = [float(x.strip()) for x in dfc.split(",")]
-
-            # Generate index for default risk curve
-            idx = range(1, len(values)+1)
-
-            return pd.Series(values, index=idx)

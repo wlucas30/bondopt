@@ -112,9 +112,7 @@ class ReinvestmentStrategy:
                     market_value=notional,
                     ignore_spread=True # z-spread is accounted for by adding spread in this function
                 )
-                new_assets.append(bond)
-                print("Created 1 new bond.")
-                print(bond.summary(verbose=True))
+                new_assets.append(bond) 
         return new_assets
     
     def __solve_for_par_coupon(self, yield_curve, spread, maturity, coupon_freq, today):
