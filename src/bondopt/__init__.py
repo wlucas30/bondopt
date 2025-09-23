@@ -43,16 +43,16 @@ def import_default_rates(path_to_input: str, preset_name: str) -> None:
         raise Exception("Error occurred while processing CSV input!")
 
 def dfc_format(dfc):
-        """
-        Formats default risk curve from CSV input
-        """
-        if dfc is None or not isinstance(dfc, str):
-            return None
-        else:
-            # Split string into list of floats
-            values = [float(x.strip()) for x in dfc.split(",")]
+    """
+    Formats default risk curve from CSV input
+    """
+    if dfc is None or not isinstance(dfc, str):
+        return None
+    else:
+        # Split string into list of floats
+        values = [float(x.strip()) for x in dfc.split(",")]
 
-            # Generate index for default risk curve
-            idx = range(1, len(values)+1)
+        # Generate index for default risk curve
+        idx = range(1, len(values)+1)
 
-            return pd.Series(values, index=idx)
+        return pd.Series(values, index=idx)
