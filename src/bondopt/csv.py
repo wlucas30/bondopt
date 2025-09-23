@@ -54,7 +54,7 @@ class CSVHandler:
             "bond": ["Asset Type", "Issue Date", "Maturity Date", "Coupon Rate", "Coupon Frequency", "Market Value", "Notional"],
             "yield_curve_dict": ["From Date"],
             "yield_curve": [], # consists of just dates, no required columns
-            "reinvestment_strategy": ["Asset Rating", "Allocation %", "Spread Adjustment (bps)"],
+            "reinvestment_strategy": ["Asset Rating", "Allocation %", "Spread Adjustment (bps)", "Coupon Frequency", "Maturity Offset"],
             "default_table": ["Asset Rating", "Default Risk Curve"]
         }
 

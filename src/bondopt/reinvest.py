@@ -32,6 +32,7 @@ Example:
 
 # SPDX-License-Identifier: MIT
 
+from bondopt import default_table, dfc_format
 from bondopt.bond import Bond
 from dataclasses import dataclass
 import pandas as pd
@@ -91,26 +92,38 @@ class ReinvestmentStrategy:
         """
 
         new_assets = []
-        for _, row in self.table.iterrows():
+        for index, row in self.table.iterrows():
             alloc = row["Allocation %"]
             rating = row["Asset Rating"]
             spread = row["Spread Adjustment (bps)"] / 10000
-            coupon_freq = row["Coupon Frequency (annual)"]
-            maturity_offset = pd.DateOffset(years=row["Maturity Offset (years)"])
+            coupon_freq = row["Coupon Frequency"]
+            maturity_offset = pd.DateOffset(years=row["Maturity Offset"])
             notional = round(cash_available * alloc, 2)
             par_coupon = self.__solve_for_par_coupon(yield_curve=yield_curve, spread=spread, maturity=(today + maturity_offset), coupon_freq=coupon_freq, today=today)
+
+            # Retrieve preset default risk curve if possible
+            drc = None
+            if "Preset Default Table" in list(self.table.columns.values):
+                if pd.notnull(self.table.loc[index, "Preset Default Table"]):
+                    try:
+                        drc_table = default_table[self.table.loc[index, "Preset Default Table"]]
+                        drc = dfc_format(drc_table.loc[drc_table["Asset Rating"] == rating, "Default Risk Curve"].iloc[0])
+                    except Exception as e:
+                        raise Exception(f"Error: bad default table provided! {e}")
 
             if notional > 0:
                 bond = Bond(
                     cusip=rating,
                     asset_type="fixed",
+                    asset_rating=rating,
                     issue_date=today,
                     coupon_rate=par_coupon,
                     coupon_freq=coupon_freq,
                     maturity_date=today + maturity_offset,
                     notional=notional,
                     market_value=notional,
-                    ignore_spread=True # z-spread is accounted for by adding spread in this function
+                    ignore_spread=True, # z-spread is accounted for by adding spread in this function
+                    default_risk_curve=drc
                 )
                 new_assets.append(bond) 
         return new_assets

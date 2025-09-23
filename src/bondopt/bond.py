@@ -153,7 +153,7 @@ class Bond:
                 raise ValueError("Not enough default risk data provided")
         
         # Store a unique identifier for each bond
-        self.uuid = str(uuid.uuid4())
+        self.uuid = str(uuid.uuid4())[:8]
         if self.cusip is None:
             self.cusip = ""
 

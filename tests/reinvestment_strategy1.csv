@@ -1,3 +1,3 @@
-Asset Rating,Allocation %,Spread Adjustment (bps)
-AAA,0.8,20
-BBB,0.2,200
+Asset Rating,Allocation %,Spread Adjustment (bps),Coupon Frequency,Maturity Offset,Preset Default Table
+AAA,0.8,20,1,1,Bond
+BBB,0.2,200,1,1,Bond

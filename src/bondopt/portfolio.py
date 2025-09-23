@@ -47,6 +47,7 @@ class Portfolio:
         expected_value() -> 
         get_present_values_monthly(from_date=None, to_date=None, yield_curve=None, yield_curve_dict=None, use_default_risk=False, reinvestment_strategy=None) -> pd.DataFrame:
             Calculates the expected future present value of assets monthly from a given date, or today if none provided.
+            Simulates reinvestment of cash from coupon payments if a ReinvestmentStrategy is provided.
     """
 
     def __post_init__(self):

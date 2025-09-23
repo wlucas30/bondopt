@@ -462,7 +462,7 @@ def test_reinvestment_assets_appear_next_month():
     # Simple reinvestment strategy: put 100% into BBB, 1-year, annual coupon
     table = pd.DataFrame([
         {"Asset Rating": "BBB Bond", "Allocation %": 1.0, "Spread Adjustment (bps)": 200,
-         "Coupon Frequency (annual)": 1, "Maturity Offset (years)": 1}
+         "Coupon Frequency": 1, "Maturity Offset": 1}
     ])
     strategy = ReinvestmentStrategy(table)
 
@@ -524,6 +524,58 @@ def test_reinvestment_strategy_csv():
 
     assert isinstance(rs, ReinvestmentStrategy)
     assert len(rs.table) == 2
+
+def test_reinvestment_assets_appear_next_month_with_csv():
+    # Create CSV handler object
+    handler = CSVHandler()
+
+    # Store preset default table
+    import bondopt
+    bondopt.import_default_rates("tests/default_rates1.csv", "Bond")
+
+    # Encode the strategy CSV
+    strategy = handler.encode("tests/reinvestment_strategy1.csv")
+
+    # Today
+    today = pd.Timestamp.today().normalize()
+
+    # Simple bond that pays one coupon next month
+    maturity = today + pd.DateOffset(months=1)
+    bond = Bond(
+        cusip="Initial Bond",
+        asset_type="fixed",
+        issue_date=today,
+        coupon_rate=0.05,
+        coupon_freq=1,  # annual coupon, but we'll assume it pays once at maturity
+        maturity_date=maturity,
+        notional=1000,
+        market_value=1000,
+        default_risk_curve=pd.Series([0.0003], index=[1])
+    )
+
+    # Portfolio with just this bond
+    p = Portfolio()
+    p.add_bond(bond)
+
+    # Longest reinvestment maturity = today + 1m (bond matures) + 1y (offset). Add 1 month to be safe
+    longest_maturity = today + rd.relativedelta(months=14)
+
+    # Build flat yield curve (2% everywhere) from from_date to longest maturity
+    dates = []
+    working_date = today
+    while working_date <= longest_maturity:
+        dates.append(working_date)
+        working_date += rd.relativedelta(months=1)
+    yield_curve = pd.Series(0.02, index=dates)
+
+    # Run projection for 2 months with reinvestment
+    df = p.get_present_values_monthly(
+        from_date=today,
+        to_date=today + rd.relativedelta(months=13),
+        reinvestment_strategy=strategy,
+        yield_curve=yield_curve,
+        use_default_risk=True
+    )
 
 def test_store_default_rate_table():
     import bondopt
